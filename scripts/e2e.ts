@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the twenty-four free tools",
-      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,json_query,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find",
+      "tools/list returns the twenty-five free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,json_query,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -207,6 +207,8 @@ async function main(): Promise<void> {
     check("review_branch responds gracefully (non-repo) over the wire", rb.isError === true && resultText(rb).includes("not a git repository"));
     const rar = await client.callTool({ name: "read_at_rev", arguments: { path: "sample.ts", ref: "HEAD" } });
     check("read_at_rev responds gracefully (non-repo) over the wire", rar.isError === true && resultText(rar).includes("not a git repository"));
+    const sh = await client.callTool({ name: "symbol_history", arguments: { path: "sample.ts", symbol: "add" } });
+    check("symbol_history responds gracefully (non-repo) over the wire", sh.isError === true && resultText(sh).includes("not a git repository"));
 
     const checked = await client.callTool({ name: "code_check", arguments: { script: "ok" } });
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));

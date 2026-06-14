@@ -37,6 +37,7 @@ import { replaceSymbolPlugin } from "./plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
+import { symbolHistoryPlugin } from "./plugins/symbol-history/index.js";
 
 const VERSION = "0.1.0";
 
@@ -60,6 +61,7 @@ const plugins: Plugin[] = [
   repoMapPlugin(),
   diffDigestPlugin(),
   reviewBranchPlugin(),
+  symbolHistoryPlugin(),
   codeCheckPlugin(),
   checkLocatePlugin(),
   codeEditPlugin(),

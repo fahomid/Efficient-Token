@@ -46,6 +46,7 @@ import { replaceSymbolPlugin } from "../src/plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
+import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
 export class Greeter {
@@ -858,6 +859,19 @@ async function main(): Promise<void> {
       check("read_at_rev reads a symbol from the committed rev (not working tree)", rarSym.includes("return 1;") && !rarSym.includes("return 100;"));
       check("read_at_rev invalid ref rejected", (await rar.handler({ path: "f.ts", ref: "--evil" })).isError === true);
       check("read_at_rev missing path at rev errors", (await rar.handler({ path: "nope.ts", ref: "HEAD" })).isError === true);
+
+      // symbol_history: git log -L for one symbol (commit alpha=100, giving 2 commits touching alpha)
+      await g(["commit", "-q", "-am", "bump alpha"]);
+      const shPlugin = symbolHistoryPlugin();
+      await shPlugin.init?.(gctx);
+      const sh = tool(shPlugin, "symbol_history");
+      const shList = textOf(await sh.handler({ path: "mod.ts", symbol: "alpha" }));
+      check("symbol_history list shows commits touching the symbol", shList.includes("add mod") && shList.includes("bump alpha") && shList.includes("function alpha"));
+      const shHunks = textOf(await sh.handler({ path: "mod.ts", symbol: "alpha", mode: "hunks" }));
+      check("symbol_history hunks shows the per-revision diff", shHunks.includes("return 100") && shHunks.includes("commit "));
+      check("symbol_history range mode works", !(await sh.handler({ path: "mod.ts", startLine: 1, endLine: 3 })).isError);
+      check("symbol_history invalid ref rejected", (await sh.handler({ path: "mod.ts", symbol: "alpha", ref: "--evil" })).isError === true);
+      check("symbol_history unknown symbol errors", (await sh.handler({ path: "mod.ts", symbol: "zzz" })).isError === true);
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }
