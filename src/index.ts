@@ -20,6 +20,7 @@ import { codeContextPlugin } from "./plugins/code-context/index.js";
 import { codeReadPlugin } from "./plugins/code-read/index.js";
 import { codeSearchPlugin } from "./plugins/code-search/index.js";
 import { applyPatchPlugin } from "./plugins/apply-patch/index.js";
+import { callHierarchyPlugin } from "./plugins/call-hierarchy/index.js";
 import { callSitesPlugin } from "./plugins/call-sites/index.js";
 import { changeCoveragePlugin } from "./plugins/change-coverage/index.js";
 import { checkLocatePlugin } from "./plugins/check-locate/index.js";
@@ -67,6 +68,7 @@ const plugins: Plugin[] = [
   findReferencesPlugin(),
   symbolFindPlugin(),
   callSitesPlugin(),
+  callHierarchyPlugin(),
   markerInventoryPlugin(),
   importMapPlugin(),
   typeClosurePlugin(),

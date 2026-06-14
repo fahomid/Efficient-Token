@@ -29,6 +29,7 @@ import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
+import { callHierarchyPlugin } from "../src/plugins/call-hierarchy/index.js";
 import { callSitesPlugin } from "../src/plugins/call-sites/index.js";
 import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
 import { changeCoveragePlugin } from "../src/plugins/change-coverage/index.js";
@@ -831,6 +832,17 @@ async function main(): Promise<void> {
     const tcShallow = textOf(await tc.handler({ symbol: "Shape", path: "tc", maxDepth: 1 }));
     check("type_closure respects maxDepth", tcShallow.includes("interface Point") && !tcShallow.includes("interface Coord"));
     check("type_closure unknown type errors", (await tc.handler({ symbol: "NopeType", path: "tc" })).isError === true);
+
+    // --- call_hierarchy plugin ------------------------------------------
+    await ctx.fs.writeAtomic("ch/lib.ts", "export function helper() { return 1; }\nexport function other() { return 2; }\nexport function target() {\n  return helper() + other();\n}\n");
+    await ctx.fs.writeAtomic("ch/use.ts", "function run() {\n  return target() + 1;\n}\n");
+    const chPl = callHierarchyPlugin();
+    await chPl.init?.(ctx);
+    const ch = tool(chPl, "call_hierarchy");
+    const chRes = textOf(await ch.handler({ symbol: "target", path: "ch" }));
+    check("call_hierarchy lists callees with their defs", chRes.includes("callees (2)") && chRes.includes("helper") && chRes.includes("other") && chRes.includes("ch/lib.ts"));
+    check("call_hierarchy lists callers with enclosing symbol", chRes.includes("callers (1") && chRes.includes("ch/use.ts:2") && chRes.includes("run"));
+    check("call_hierarchy unknown symbol errors", (await ch.handler({ symbol: "nopeFn", path: "ch" })).isError === true);
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");

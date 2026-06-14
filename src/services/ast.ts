@@ -348,6 +348,43 @@ export class AstService {
     return result;
   }
 
+  /**
+   * Every call/invocation in the file as `{name, line}` (the callee name and the
+   * 1-based line). Used by `call_hierarchy` to list a function's callees.
+   * @returns `undefined` if the file type has no grammar OR no call mapping.
+   */
+  async findCalls(filePath: string, code: string): Promise<Array<{ name: string; line: number }> | undefined> {
+    const id = this.grammarIdFor(filePath);
+    if (id === undefined) return undefined;
+    const specs = CALL_SPECS[id];
+    if (specs === undefined) return undefined;
+    return this.run(filePath, code, (root) => {
+      const out: Array<{ name: string; line: number }> = [];
+      this.walkAllCalls(root, specs, out, 0);
+      return out;
+    });
+  }
+
+  private walkAllCalls(
+    node: Node,
+    specs: ReadonlyArray<{ type: string; field?: string }>,
+    out: Array<{ name: string; line: number }>,
+    depth: number,
+  ): void {
+    if (depth > 4000 || out.length > 20000) return;
+    for (let i = 0; i < node.namedChildCount; i++) {
+      const child = node.namedChild(i);
+      if (!child) continue;
+      const spec = specs.find((s) => s.type === child.type);
+      if (spec) {
+        const callee = (spec.field ? child.childForFieldName(spec.field) : null) ?? child.namedChild(0);
+        const name = callee ? this.calleeName(callee) : undefined;
+        if (name && callee) out.push({ name, line: callee.startPosition.row + 1 });
+      }
+      this.walkAllCalls(child, specs, out, depth + 1);
+    }
+  }
+
   private walkCalls(
     node: Node,
     specs: ReadonlyArray<{ type: string; field?: string }>,
