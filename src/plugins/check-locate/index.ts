@@ -11,8 +11,11 @@ const MAX_TIMEOUT_MS = 300_000;
 const SAFE_SCRIPT = /^[A-Za-z0-9:._-]+$/;
 const DEFAULT_LOCATIONS = 5;
 const MAX_LINE = 400;
-// path (opt. drive) ending in .ext, then :line(:col)? — tsc/eslint/node stack frames.
-const LOCATION_RE = /((?:[A-Za-z]:)?[\w./\\-]+\.[A-Za-z0-9]+):(\d+)(?::\d+)?/g;
+const MAX_SCAN_LINES = 500; // only the last N lines (errors are at the end)
+const MAX_LINE_LEN = 2000; // skip pathologically long lines (ReDoS / minified frames)
+// Path (optional drive prefix) — a colon-free run — then :line(:col)?. The body
+// excludes ':' so there is no quantifier overlap: this is LINEAR (no ReDoS).
+const LOCATION_RE = /((?:[A-Za-z]:)?[^\s:'"()]+):(\d+)(?::\d+)?/g;
 
 /**
  * `check_locate` — run a package.json script (like `code_check`) and, on FAILURE,
@@ -86,36 +89,44 @@ export function checkLocatePlugin(): Plugin {
 async function locate(ctx: CoreContext, output: string, max: number, context: number): Promise<string[]> {
   const seen = new Set<string>();
   const blocks: string[] = [];
-  LOCATION_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = LOCATION_RE.exec(output)) !== null && blocks.length < max) {
-    const rawPath = m[1]!;
-    const lineNo = Number(m[2]);
-    let rel: string;
-    try {
-      rel = ctx.paths.relative(ctx.paths.resolve(rawPath));
-    } catch {
-      continue; // escapes the workspace
-    }
-    const key = `${rel}:${lineNo}`;
-    if (seen.has(key)) continue;
-    const content = await readText(ctx, rel);
-    if (content === undefined) continue; // not a real, readable workspace file
-    seen.add(key);
+  const allLines = output.split("\n");
+  const scanLines = allLines.slice(Math.max(0, allLines.length - MAX_SCAN_LINES));
+  for (const line of scanLines) {
+    if (blocks.length >= max) break;
+    if (line.length > MAX_LINE_LEN) continue; // bound regex work per line
+    LOCATION_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = LOCATION_RE.exec(line)) !== null && blocks.length < max) {
+      const rawPath = m[1]!;
+      const lineNo = Number(m[2]);
+      const base = rawPath.replace(/\\/g, "/").split("/").pop() ?? "";
+      if (!base.includes(".")) continue; // require a file-ish path (has an extension)
+      let rel: string;
+      try {
+        rel = ctx.paths.relative(ctx.paths.resolve(rawPath));
+      } catch {
+        continue; // escapes the workspace
+      }
+      const key = `${rel}:${lineNo}`;
+      if (seen.has(key)) continue;
+      const content = await readText(ctx, rel);
+      if (content === undefined) continue; // not a real, readable workspace file
+      seen.add(key);
 
-    const lines = splitLines(content);
-    if (lineNo < 1 || lineNo > lines.length) continue;
-    const sym = ctx.ast.supports(rel) ? enclosing(await ctx.ast.outline(rel, content), lineNo) : undefined;
-    const where = sym ? `  (in ${sym.kind} ${sym.container ? `${sym.container}.` : ""}${sym.name})` : "";
-    const from = Math.max(1, lineNo - context);
-    const to = Math.min(lines.length, lineNo + context);
-    const width = String(to).length;
-    const body: string[] = [];
-    for (let i = from; i <= to; i++) {
-      const mark = i === lineNo ? "›" : " ";
-      body.push(`${mark}${String(i).padStart(width)}| ${truncate(lines[i - 1]!, MAX_LINE)}`);
+      const lines = splitLines(content);
+      if (lineNo < 1 || lineNo > lines.length) continue;
+      const sym = ctx.ast.supports(rel) ? enclosing(await ctx.ast.outline(rel, content), lineNo) : undefined;
+      const where = sym ? `  (in ${sym.kind} ${sym.container ? `${sym.container}.` : ""}${sym.name})` : "";
+      const from = Math.max(1, lineNo - context);
+      const to = Math.min(lines.length, lineNo + context);
+      const width = String(to).length;
+      const body: string[] = [];
+      for (let i = from; i <= to; i++) {
+        const mark = i === lineNo ? "›" : " ";
+        body.push(`${mark}${String(i).padStart(width)}| ${truncate(lines[i - 1]!, MAX_LINE)}`);
+      }
+      blocks.push(`${rel}:${lineNo}${where}\n${body.join("\n")}`);
     }
-    blocks.push(`${rel}:${lineNo}${where}\n${body.join("\n")}`);
   }
   return blocks;
 }

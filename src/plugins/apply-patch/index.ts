@@ -1,3 +1,5 @@
+import { promises as fsp } from "node:fs";
+
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
@@ -74,12 +76,20 @@ export function applyPatchPlugin(): Plugin {
             for (let i = 0; i < edits.length; i++) {
               const e = edits[i]!;
               const abs = ctx.paths.resolve(String(e.path));
-              let w = work.get(abs);
+              // Key by the file's real on-disk identity so case-variant paths
+              // (Windows/macOS) or symlink aliases map to ONE working copy.
+              let key: string;
+              try {
+                key = await fsp.realpath(abs);
+              } catch {
+                key = abs; // missing file -> readRaw below produces the proper error
+              }
+              let w = work.get(key);
               if (!w) {
                 const { content } = await ctx.fs.readRaw(String(e.path));
                 w = { rel: ctx.paths.relative(abs), original: content, current: content, replacements: 0 };
-                work.set(abs, w);
-                order.push(abs);
+                work.set(key, w);
+                order.push(key);
               }
               const r = applyStringEdit(w.current, String(e.oldString), String(e.newString), e.replaceAll === true);
               if (!r.ok) {
@@ -91,8 +101,8 @@ export function applyPatchPlugin(): Plugin {
 
             // 2) Syntax guard on every touched file (still nothing written).
             if (args.validate !== false) {
-              for (const abs of order) {
-                const w = work.get(abs)!;
+              for (const key of order) {
+                const w = work.get(key)!;
                 if (w.current === w.original) continue;
                 const introduced = await ctx.ast.introducedSyntaxErrors(w.rel, w.original, w.current);
                 if (introduced.length > 0) {
@@ -107,25 +117,22 @@ export function applyPatchPlugin(): Plugin {
             // 3) Write all changed files; roll back already-written ones on failure.
             const written: string[] = [];
             try {
-              for (const abs of order) {
-                const w = work.get(abs)!;
+              for (const key of order) {
+                const w = work.get(key)!;
                 if (w.current === w.original) continue;
                 await ctx.fs.writeAtomic(w.rel, w.current);
-                written.push(abs);
+                written.push(key);
               }
             } catch (err) {
-              for (const abs of written) {
-                const w = work.get(abs)!;
-                try {
-                  await ctx.fs.writeAtomic(w.rel, w.original);
-                } catch {
-                  /* best-effort rollback */
-                }
-              }
-              return fail(`apply_patch failed mid-write and rolled back: ${errMessage(err)}`);
+              const unrestored = await rollback(ctx, written, work);
+              const tail =
+                unrestored.length > 0
+                  ? ` PARTIALLY APPLIED — could not restore: ${unrestored.join(", ")} (manual revert needed).`
+                  : " Rolled back.";
+              return fail(`apply_patch failed mid-write:${tail} (${errMessage(err)})`);
             }
 
-            const changed = order.map((abs) => work.get(abs)!).filter((w) => w.current !== w.original);
+            const changed = order.map((key) => work.get(key)!).filter((w) => w.current !== w.original);
             const totalEdits = changed.reduce((a, w) => a + w.replacements, 0);
             const summary = changed.map((w) => `  ${w.rel}: ${w.replacements} replacement(s)`).join("\n");
             return ok(
@@ -138,4 +145,22 @@ export function applyPatchPlugin(): Plugin {
       },
     ],
   };
+}
+
+/** Restore originals for already-written files; return rels that could NOT be restored. */
+async function rollback(
+  ctx: CoreContext,
+  writtenKeys: string[],
+  work: Map<string, WorkFile>,
+): Promise<string[]> {
+  const failed: string[] = [];
+  for (const key of writtenKeys) {
+    const w = work.get(key)!;
+    try {
+      await ctx.fs.writeAtomic(w.rel, w.original);
+    } catch {
+      failed.push(w.rel);
+    }
+  }
+  return failed;
 }

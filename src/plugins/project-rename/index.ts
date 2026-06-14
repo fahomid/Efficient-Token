@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { formatSyntaxIssues } from "../../services/ast.js";
-import { escapeRegExp, TYPE_EXTS } from "../../services/scan.js";
+import { identifierBoundary, TYPE_EXTS } from "../../services/scan.js";
 
 const MAX_SCAN_FILES = 10_000;
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -56,7 +56,7 @@ export function projectRenamePlugin(): Plugin {
             if (!IDENT.test(newName)) return fail(`newName is not a valid identifier: ${JSON.stringify(newName)}.`);
             const dryRun = args.dryRun === true;
 
-            const re = new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(oldName)}(?![A-Za-z0-9_$])`, "g");
+            const re = identifierBoundary(oldName, "g");
             const type = args.type === undefined ? undefined : String(args.type).toLowerCase();
             const exts = type ? TYPE_EXTS[type] ?? [type] : undefined;
             const scan = await ctx.scan.files({
@@ -115,14 +115,19 @@ export function projectRenamePlugin(): Plugin {
                 written.push(c);
               }
             } catch (err) {
+              const unrestored: string[] = [];
               for (const c of written) {
                 try {
                   await ctx.fs.writeAtomic(c.rel, c.original);
                 } catch {
-                  /* best-effort rollback */
+                  unrestored.push(c.rel);
                 }
               }
-              return fail(`project_rename failed mid-write and rolled back: ${errMessage(err)}`);
+              const tail =
+                unrestored.length > 0
+                  ? ` PARTIALLY APPLIED — could not restore: ${unrestored.join(", ")} (manual revert needed).`
+                  : " Rolled back.";
+              return fail(`project_rename failed mid-write:${tail} (${errMessage(err)})`);
             }
 
             return ok(

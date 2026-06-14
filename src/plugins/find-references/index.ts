@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { splitLines, truncate } from "../../core/text.js";
-import { escapeRegExp, TYPE_EXTS } from "../../services/scan.js";
+import { identifierBoundary, TYPE_EXTS } from "../../services/scan.js";
 
 const DEFAULT_HEAD = 100;
 const MAX_SCAN_FILES = 10_000;
@@ -47,11 +47,8 @@ export function findReferencesPlugin(): Plugin {
 
             let refRe: RegExp;
             try {
-              // Identifier boundaries (handles _, $ — better than \b for code).
-              refRe = new RegExp(
-                `(?<![A-Za-z0-9_$])${escapeRegExp(symbol)}(?![A-Za-z0-9_$])`,
-                `g${insensitive ? "i" : ""}`,
-              );
+              // Unicode-aware identifier boundaries (won't match inside a larger id).
+              refRe = identifierBoundary(symbol, `g${insensitive ? "i" : ""}`);
             } catch (e) {
               return fail(`find_references failed: ${errMessage(e)}`);
             }

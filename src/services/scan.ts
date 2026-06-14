@@ -213,3 +213,14 @@ function globToRegExpSource(glob: string): string {
 export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/**
+ * A regex matching `name` only at identifier boundaries — Unicode-aware, so it
+ * never matches an ASCII substring inside a larger identifier (e.g. `caf` inside
+ * `café`). `\p{ID_Continue}` covers letters/digits/underscore/combining marks
+ * across languages; `$` is added explicitly (valid in JS identifiers). Caller
+ * passes extra flags (e.g. "g", "gi"); the `u` flag is always added.
+ */
+export function identifierBoundary(name: string, flags = ""): RegExp {
+  return new RegExp(`(?<![\\p{ID_Continue}$])${escapeRegExp(name)}(?![\\p{ID_Continue}$])`, `${flags}u`);
+}

@@ -4,7 +4,7 @@ import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { numberLines, splitLines, truncate } from "../../core/text.js";
 import type { SymbolInfo } from "../../services/ast.js";
-import { escapeRegExp, TYPE_EXTS } from "../../services/scan.js";
+import { identifierBoundary, TYPE_EXTS } from "../../services/scan.js";
 
 const MAX_SCAN_FILES = 10_000;
 const MAX_DEF_LINES = 120;
@@ -76,7 +76,7 @@ export function codeContextPlugin(): Plugin {
             }
 
             // Build the reference list (identifier-boundary scan).
-            const refRe = new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(symbol)}(?![A-Za-z0-9_$])`);
+            const refRe = identifierBoundary(symbol);
             const refs: string[] = [];
             let refTotal = 0;
             const defLines = new Set(targets.map((t) => `${t.rel}:${t.sym.startLine}`));

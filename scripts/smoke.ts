@@ -474,6 +474,19 @@ async function main(): Promise<void> {
     const apEscape = await ap.handler({ edits: [{ path: "../escape.ts", oldString: "a", newString: "b" }] });
     check("apply_patch blocks path escape", apEscape.isError === true);
 
+    // Case-variant paths to the SAME file must coalesce (no lost edit) on a
+    // case-insensitive filesystem.
+    if (process.platform === "win32" || process.platform === "darwin") {
+      await ctx.fs.writeAtomic("ap/cv.ts", "const A = 1;\nconst C = 2;\n");
+      const apCv = await ap.handler({ edits: [
+        { path: "ap/cv.ts", oldString: "A = 1", newString: "A = 11" },
+        { path: "ap/CV.ts", oldString: "C = 2", newString: "C = 22" },
+      ] });
+      check("apply_patch coalesces case-variant paths", !apCv.isError && (await ctx.fs.read("ap/cv.ts")).content === "const A = 11;\nconst C = 22;\n");
+    } else {
+      check("apply_patch case-variant coalescing (skipped: case-sensitive FS)", true);
+    }
+
     // --- note plugin (scratchpad) ---------------------------------------
     const notePl = notePlugin();
     await notePl.init?.(ctx);
@@ -508,6 +521,10 @@ async function main(): Promise<void> {
     check("project_rename rejects invalid newName", (await pr.handler({ oldName: "gadget", newName: "1bad", path: "pr" })).isError === true);
     check("project_rename rejects identical names", (await pr.handler({ oldName: "x", newName: "x", path: "pr" })).isError === true);
     check("project_rename handles no occurrences", textOf(await pr.handler({ oldName: "nonexistentZZZ", newName: "y", path: "pr" })).includes("No occurrences"));
+    // Unicode identifier boundary: renaming "caf" must not corrupt "café".
+    await ctx.fs.writeAtomic("pr/uni.ts", "const caf = 1;\nconst café = 2;\n");
+    const uni = await pr.handler({ oldName: "caf", newName: "X", path: "pr" });
+    check("project_rename respects Unicode identifier boundaries", !uni.isError && (await ctx.fs.read("pr/uni.ts")).content === "const X = 1;\nconst café = 2;\n");
 
     // --- code_search plugin (Grep semantics) ----------------------------
     await ctx.fs.writeAtomic("srch/a.ts", "export function alpha() {}\nconst beta = 1;\n");
@@ -710,6 +727,7 @@ async function main(): Promise<void> {
           bad: "node -e \"console.error('boomtoken123'); process.exit(3)\"",
           sleep: 'node -e "setTimeout(() => {}, 30000)"',
           failloc: "node -e \"console.error('src.ts:2:21 - error TS2322: bad type'); process.exit(1)\"",
+          longout: "node -e \"console.error('x.'.repeat(60000)); console.error('src.ts:3:1 - err'); process.exit(1)\"",
         },
       };
       await fsp.writeFile(path.join(checkRoot, "package.json"), JSON.stringify(pkg, null, 2));
@@ -751,6 +769,9 @@ async function main(): Promise<void> {
       const clt = textOf(await cl.handler({ script: "failloc" }));
       check("check_locate shows the failing source", clt.includes("✗ failloc: FAILED") && clt.includes("src.ts:2") && clt.includes("const x: number = 'oops';"));
       check("check_locate marks error line + enclosing symbol", clt.includes("›") && clt.includes("in function broken"));
+      const clT0 = Date.now();
+      const clLong = textOf(await cl.handler({ script: "longout" }));
+      check("check_locate is ReDoS-safe on long output lines", clLong.includes("✗ longout: FAILED") && clLong.includes("src.ts:3") && Date.now() - clT0 < 10_000, `${Date.now() - clT0}ms`);
     } finally {
       await fsp.rm(checkRoot, { recursive: true, force: true });
     }
