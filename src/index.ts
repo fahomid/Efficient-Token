@@ -28,6 +28,7 @@ import { findReferencesPlugin } from "./plugins/find-references/index.js";
 import { globPlugin } from "./plugins/glob/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
+import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { notePlugin } from "./plugins/note/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
 import { readManyPlugin } from "./plugins/read-many/index.js";
@@ -47,6 +48,7 @@ const plugins: Plugin[] = [
   codeReadPlugin(),
   readManyPlugin(),
   globPlugin(),
+  jsonQueryPlugin(),
   codeSearchPlugin(),
   grepContextPlugin(),
   findReferencesPlugin(),

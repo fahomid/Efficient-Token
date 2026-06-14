@@ -37,6 +37,7 @@ import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { globPlugin } from "../src/plugins/glob/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
+import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { readManyPlugin } from "../src/plugins/read-many/index.js";
@@ -619,6 +620,24 @@ async function main(): Promise<void> {
     ] });
     const mixedT = textOf(mixed);
     check("read_many handles a bad target gracefully", !mixed.isError && mixedT.includes("return a + b;") && mixedT.includes("(error)"));
+
+    // --- json_query plugin ----------------------------------------------
+    await ctx.fs.writeAtomic("jq/data.json", JSON.stringify({ name: "pkg", scripts: { build: "tsc", test: "vitest" }, deps: ["a", "b", "c"], nested: { deep: { value: 42 } } }, null, 2));
+    const jqPlugin = jsonQueryPlugin();
+    await jqPlugin.init?.(ctx);
+    const jq = tool(jqPlugin, "json_query");
+    check("json_query dotted path", textOf(await jq.handler({ path: "jq/data.json", query: "scripts.build" })).includes("tsc"));
+    check("json_query array index", textOf(await jq.handler({ path: "jq/data.json", query: "deps[1]" })).includes('"b"'));
+    check("json_query nested path", textOf(await jq.handler({ path: "jq/data.json", query: "nested.deep.value" })).includes("42"));
+    const jqObj = textOf(await jq.handler({ path: "jq/data.json", query: "scripts" }));
+    check("json_query object slice", jqObj.includes("build") && jqObj.includes("test"));
+    const jqOv = textOf(await jq.handler({ path: "jq/data.json" }));
+    check("json_query overview", jqOv.includes("top-level") && jqOv.includes("scripts: object") && jqOv.includes("deps: array"));
+    const jqMiss = await jq.handler({ path: "jq/data.json", query: "nope" });
+    check("json_query missing key lists available", jqMiss.isError === true && textOf(jqMiss).includes("Available"));
+    check("json_query out-of-range index", (await jq.handler({ path: "jq/data.json", query: "deps[99]" })).isError === true);
+    await ctx.fs.writeAtomic("jq/bad.json", "{ not valid json ");
+    check("json_query rejects invalid JSON", textOf(await jq.handler({ path: "jq/bad.json" })).includes("not valid JSON"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
