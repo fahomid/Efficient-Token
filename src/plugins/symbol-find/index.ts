@@ -81,7 +81,12 @@ export function symbolFindPlugin(): Plugin {
             }
 
             const how = substring ? "containing" : "named";
-            if (total === 0) return ok(`No symbol ${how} "${name}" found.`);
+            if (total === 0) {
+              const inc = scan.truncated
+                ? `\n[scan incomplete — over ${MAX_SCAN_FILES} files; it may be defined in an unscanned file — narrow with kind/type/path]`
+                : "";
+              return ok(`No symbol ${how} "${name}" found.${inc}`);
+            }
             const capped = total > hits.length;
             const note = capped || scan.truncated ? "\n[results bounded — narrow with kind/type/path or raise headLimit]" : "";
             return ok(`${total}${capped ? "+" : ""} symbol(s) ${how} "${name}":\n${hits.join("\n")}${note}`);

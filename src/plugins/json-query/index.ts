@@ -45,7 +45,7 @@ export function jsonQueryPlugin(): Plugin {
             }
 
             if (args.query === undefined || String(args.query).trim() === "") {
-              return ok(`${rel} (top-level):\n${overview(data)}`);
+              return ok(clampText(`${rel} (top-level):\n${overview(data)}`, maxTokens));
             }
 
             const query = String(args.query);
@@ -117,11 +117,16 @@ function parseQuery(q: string): Array<string | number> | null {
   return out.length > 0 ? out : null;
 }
 
+const MAX_OVERVIEW_KEYS = 1000;
+
 function overview(data: unknown): string {
   if (Array.isArray(data)) return `array (${data.length} item(s))`;
   if (data === null || typeof data !== "object") return `value: ${JSON.stringify(data)}`;
   const obj = data as Record<string, unknown>;
-  return Object.keys(obj).map((k) => `  ${k}: ${describeVal(obj[k])}`).join("\n");
+  const keys = Object.keys(obj);
+  const lines = keys.slice(0, MAX_OVERVIEW_KEYS).map((k) => `  ${k}: ${describeVal(obj[k])}`);
+  if (keys.length > MAX_OVERVIEW_KEYS) lines.push(`  … (+${keys.length - MAX_OVERVIEW_KEYS} more keys — query a path to drill in)`);
+  return lines.join("\n");
 }
 
 function describeVal(v: unknown): string {
@@ -134,10 +139,18 @@ function describeVal(v: unknown): string {
 
 function render(value: unknown, maxTokens: number): string {
   const text = JSON.stringify(value, null, 2) ?? String(value);
+  return clampText(text, maxTokens);
+}
+
+/** Truncate to ~maxTokens at a line boundary, never splitting a surrogate pair. */
+function clampText(text: string, maxTokens: number): string {
   const budget = maxTokens * 4;
   if (text.length <= budget) return text;
   const cut = text.lastIndexOf("\n", budget);
-  return `${text.slice(0, cut > 0 ? cut : budget)}\n… [truncated at ~${maxTokens} tokens — query a deeper path]`;
+  let end = cut > 0 ? cut : budget;
+  const cu = text.charCodeAt(end - 1);
+  if (cu >= 0xd800 && cu <= 0xdbff) end -= 1; // don't leave a lone high surrogate
+  return `${text.slice(0, end)}\n… [truncated at ~${maxTokens} tokens — query a deeper path]`;
 }
 
 function typeName(v: unknown): string {

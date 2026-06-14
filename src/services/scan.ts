@@ -93,18 +93,19 @@ export class Scanner {
     const st = await statSafe(realRoot);
     if (st?.isFile()) {
       const rel = this.paths.relative(realRoot);
-      const files = include(rel, exts, match) ? [{ abs: realRoot, rel }] : [];
+      const files = include(rel, rel, exts, match) ? [{ abs: realRoot, rel }] : [];
       return { files, truncated: false };
     }
 
     const out: ScannedFile[] = [];
-    const truncated = await this.walk(realRoot, exts, match, max, out);
+    const truncated = await this.walk(realRoot, realRoot, exts, match, max, out);
     return { files: out, truncated };
   }
 
   /** Pre-order, name-sorted DFS. Returns true if the `max` cap was hit. */
   private async walk(
     dir: string,
+    scanRoot: string,
     exts: Set<string> | undefined,
     match: ((rel: string) => boolean) | undefined,
     max: number,
@@ -122,10 +123,11 @@ export class Scanner {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) {
         if (IGNORED_DIRS.has(e.name)) continue;
-        if (await this.walk(abs, exts, match, max, out)) return true;
+        if (await this.walk(abs, scanRoot, exts, match, max, out)) return true;
       } else if (e.isFile()) {
         const rel = this.paths.relative(abs);
-        if (include(rel, exts, match)) out.push({ abs, rel });
+        const relWithin = toPosix(path.relative(scanRoot, abs));
+        if (include(rel, relWithin, exts, match)) out.push({ abs, rel });
       }
     }
     return out.length >= max;
@@ -134,6 +136,7 @@ export class Scanner {
 
 function include(
   rel: string,
+  relWithin: string,
   exts: Set<string> | undefined,
   match: ((rel: string) => boolean) | undefined,
 ): boolean {
@@ -142,8 +145,15 @@ function include(
     const ext = dot === -1 ? "" : rel.slice(dot + 1).toLowerCase();
     if (!exts.has(ext)) return false;
   }
-  if (match && !match(rel)) return false;
+  // A slash-glob matches the workspace-relative path OR — when the scan is
+  // scoped to a sub-path — the path relative to that scope, so a scoped glob
+  // like { path: "src", pattern: "lib/*.ts" } is not silently anchored to root.
+  if (match && !match(rel) && (relWithin === rel || !match(relWithin))) return false;
   return true;
+}
+
+function toPosix(p: string): string {
+  return path.sep === "/" ? p : p.split(path.sep).join("/");
 }
 
 async function statSafe(p: string): Promise<import("node:fs").Stats | undefined> {
@@ -161,7 +171,17 @@ async function statSafe(p: string): Promise<import("node:fs").Stats | undefined>
  */
 export function compileGlob(glob: string): (rel: string) => boolean {
   const basenameOnly = !glob.includes("/");
-  const re = new RegExp(`^${globToRegExpSource(glob)}$`);
+  // Match the way the underlying filesystem resolves names: case-insensitive on
+  // Windows/macOS (so `README*` finds `readme.md`), case-sensitive on Linux.
+  const ciFs = process.platform === "win32" || process.platform === "darwin";
+  let re: RegExp;
+  try {
+    re = new RegExp(`^${globToRegExpSource(glob)}$`, ciFs ? "i" : "");
+  } catch {
+    // A glob whose character class is invalid JS regex (e.g. a reversed range
+    // `[z-a]`) must surface as a clean "invalid glob", never leak regex internals.
+    throw new Error(`invalid glob pattern: ${JSON.stringify(glob)}`);
+  }
   return (rel: string): boolean => {
     const target = basenameOnly ? (rel.split("/").pop() ?? rel) : rel;
     return re.test(target);
@@ -200,7 +220,11 @@ function globToRegExpSource(glob: string): string {
       if (end === -1) {
         re += "\\[";
       } else {
-        re += glob.slice(i, end + 1); // character class, passed through
+        // Glob negation is `[!...]`; JS regex negation is `[^...]`. Translate so
+        // `[!_]*.ts` means "not starting with _" rather than matching a literal !.
+        let body = glob.slice(i + 1, end);
+        if (body.startsWith("!")) body = `^${body.slice(1)}`;
+        re += `[${body}]`;
         i = end;
       }
     } else {

@@ -21,11 +21,12 @@ export async function readTarget(ctx: CoreContext, t: ReadTarget): Promise<ToolR
     const { content, abs } = await ctx.fs.read(t.path);
     const rel = ctx.paths.relative(abs);
     const lines = splitLines(content);
-    if (t.symbol !== undefined) return await readSymbol(ctx, t.path, content, lines, rel, t.symbol);
+    const maxTokens = t.maxTokens ?? ctx.config.maxReadTokens;
+    if (t.symbol !== undefined) return await readSymbol(ctx, t.path, content, lines, rel, t.symbol, maxTokens);
     if (t.startLine !== undefined || t.endLine !== undefined) {
-      return readRange(lines, rel, t.startLine, t.endLine);
+      return readRange(lines, rel, t.startLine, t.endLine, maxTokens);
     }
-    return await readWhole(ctx, t.path, content, lines, rel, t.maxTokens ?? ctx.config.maxReadTokens);
+    return await readWhole(ctx, t.path, content, lines, rel, maxTokens);
   } catch (err) {
     return fail(`read failed (${t.path}): ${errMessage(err)}`);
   }
@@ -38,6 +39,7 @@ async function readSymbol(
   lines: string[],
   rel: string,
   symbol: string,
+  maxTokens: number,
 ): Promise<ToolResult> {
   const matches = await ctx.ast.findSymbol(filePath, content, symbol);
   if (matches === undefined) {
@@ -54,10 +56,13 @@ async function readSymbol(
   const start = clamp(target.startLine, 1, total);
   const end = clamp(target.endLine, start, total);
   const slice = lines.slice(start - 1, end);
-  const header = `${rel} — ${target.kind} ${target.name} (lines ${start}-${end} of ${total})`;
+  const b = boundLines(slice, start, maxTokens);
+  const shownEnd = b.shown > 0 ? start + b.shown - 1 : end;
+  const header = `${rel} — ${target.kind} ${target.name} (lines ${start}-${shownEnd} of ${total})`;
+  const omitNote = b.omitted > 0 ? `\n(truncated; ${b.omitted} more line(s) of this symbol — raise maxTokens)` : "";
   const extra =
     matches.length > 1 ? `\n(note: ${matches.length} symbols named "${symbol}"; showing the first)` : "";
-  return ok(`${header}${extra}\n${numberLines(slice, start)}`);
+  return ok(`${header}${extra}${omitNote}\n${b.numbered}`);
 }
 
 function readRange(
@@ -65,12 +70,39 @@ function readRange(
   rel: string,
   startLine: number | undefined,
   endLine: number | undefined,
+  maxTokens: number,
 ): ToolResult {
   const total = lines.length;
   const s = clamp(startLine ?? 1, 1, total);
   const e = clamp(endLine ?? total, s, total);
   const slice = lines.slice(s - 1, e);
-  return ok(`${rel} — lines ${s}-${e} of ${total}\n${numberLines(slice, s)}`);
+  const b = boundLines(slice, s, maxTokens);
+  const shownEnd = b.shown > 0 ? s + b.shown - 1 : e;
+  const omitNote = b.omitted > 0 ? ` (truncated; ${b.omitted} more line(s) — narrow the range or raise maxTokens)` : "";
+  return ok(`${rel} — lines ${s}-${shownEnd} of ${total}${omitNote}\n${b.numbered}`);
+}
+
+/**
+ * Number a slice but stop once the token budget is reached — so an explicit
+ * range or a huge symbol degrades to its head + an "omitted" note rather than
+ * dumping a whole file. Lines are kept verbatim (faithful); only the COUNT is
+ * bounded. The first line is always emitted so the result is never empty.
+ */
+function boundLines(
+  slice: string[],
+  startLineNo: number,
+  maxTokens: number,
+): { numbered: string; shown: number; omitted: number } {
+  const budgetChars = Math.max(2000, maxTokens * 4);
+  const out: string[] = [];
+  let used = 0;
+  for (const ln of slice) {
+    if (out.length > 0 && used + ln.length + 1 > budgetChars) break;
+    out.push(ln);
+    used += ln.length + 1;
+    if (used >= budgetChars) break;
+  }
+  return { numbered: numberLines(out, startLineNo), shown: out.length, omitted: slice.length - out.length };
 }
 
 async function readWhole(

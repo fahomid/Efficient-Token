@@ -297,6 +297,13 @@ async function main(): Promise<void> {
     const dTxt = textOf(degradeRes);
     check("code_read degrades over budget", !degradeRes.isError && dTxt.includes("exceeds budget 1") && dTxt.includes("Outline:") && dTxt.includes("First lines:"));
 
+    // A wide EXPLICIT range over a large file must bound output, not dump it
+    // (adversarial-review fix: readRange now honours maxTokens).
+    await ctx.fs.writeAtomic("bigrange.ts", Array.from({ length: 800 }, (_, i) => `const v${i} = ${i}; // ${"y".repeat(40)}`).join("\n") + "\n");
+    const wideRange = await cr.handler({ path: "bigrange.ts", startLine: 1, endLine: 800, maxTokens: 50 });
+    const wrTxt = textOf(wideRange);
+    check("code_read bounds a wide range", !wideRange.isError && wrTxt.includes("more line(s)") && wrTxt.length < 3500, `len=${wrTxt.length}`);
+
     // --- round-3 edge-case hardening ------------------------------------
     // Degrade must stay bounded even when the file is one giant line.
     const longLine = `const data = "${"x".repeat(60000)}";`;
@@ -599,6 +606,17 @@ async function main(): Promise<void> {
     check("glob type filter excludes others", !textOf(await gl.handler({ type: "ts", path: "srch" })).includes(".txt"));
     check("glob no match", textOf(await gl.handler({ pattern: "*.zzz", path: "srch" })).includes("No files"));
     check("glob headLimit caps output", textOf(await gl.handler({ path: "srch", headLimit: 1 })).includes("1+ file(s)"));
+    // glob adversarial-review regressions: negation, invalid class, scoped slash-glob, token bound, case
+    await ctx.fs.writeAtomic("srch/sub/d.ts", "export const d = 1;\n");
+    const globNeg = textOf(await gl.handler({ pattern: "[!a]*.ts", path: "srch" }));
+    check("glob negated class [!a]", globNeg.includes("srch/b.ts") && !globNeg.includes("srch/a.ts"));
+    const globBad = await gl.handler({ pattern: "[z-a].ts", path: "srch" });
+    check("glob invalid class -> clean error", globBad.isError === true && textOf(globBad).includes("invalid glob pattern") && !textOf(globBad).includes("Invalid regular expression"));
+    check("glob slash-glob is scoped to path", textOf(await gl.handler({ path: "srch", pattern: "sub/*.ts" })).includes("srch/sub/d.ts"));
+    check("glob output respects maxTokens budget", textOf(await gl.handler({ path: "srch", maxTokens: 1 })).includes("showing first"));
+    if (process.platform === "win32" || process.platform === "darwin") {
+      check("glob case-insensitive on case-insensitive FS", textOf(await gl.handler({ pattern: "*.TS", path: "srch" })).includes("srch/a.ts"));
+    }
 
     // --- read_many plugin -----------------------------------------------
     const rmManyPlugin = readManyPlugin();
@@ -620,6 +638,11 @@ async function main(): Promise<void> {
     ] });
     const mixedT = textOf(mixed);
     check("read_many handles a bad target gracefully", !mixed.isError && mixedT.includes("return a + b;") && mixedT.includes("(error)"));
+    // adversarial-review fix: an oversized FIRST target is bounded, not dumped whole.
+    await ctx.fs.writeAtomic("rm/big.txt", Array.from({ length: 500 }, (_, i) => `line ${i} ${"x".repeat(50)}`).join("\n") + "\n");
+    const rmBudget = await rmm.handler({ maxTokens: 5, reads: [{ path: "rm/big.txt" }] });
+    const rmBudgetT = textOf(rmBudget);
+    check("read_many bounds an oversized first target", !rmBudget.isError && rmBudgetT.length < 2000 && rmBudgetT.includes("truncated"), `len=${rmBudgetT.length}`);
 
     // --- json_query plugin ----------------------------------------------
     await ctx.fs.writeAtomic("jq/data.json", JSON.stringify({ name: "pkg", scripts: { build: "tsc", test: "vitest" }, deps: ["a", "b", "c"], nested: { deep: { value: 42 } } }, null, 2));
@@ -638,6 +661,25 @@ async function main(): Promise<void> {
     check("json_query out-of-range index", (await jq.handler({ path: "jq/data.json", query: "deps[99]" })).isError === true);
     await ctx.fs.writeAtomic("jq/bad.json", "{ not valid json ");
     check("json_query rejects invalid JSON", textOf(await jq.handler({ path: "jq/bad.json" })).includes("not valid JSON"));
+    // adversarial-review fix: overview path is token-bounded (was unbounded).
+    const bigObj: Record<string, number> = {};
+    for (let i = 0; i < 5000; i++) bigObj["key" + i] = i;
+    await ctx.fs.writeAtomic("jq/big.json", JSON.stringify(bigObj));
+    const jqBig = textOf(await jq.handler({ path: "jq/big.json", maxTokens: 50 }));
+    check("json_query overview is token-bounded", jqBig.length < 1000 && jqBig.includes("truncated"), `len=${jqBig.length}`);
+    // adversarial-review fix: truncation never splits a surrogate pair.
+    await ctx.fs.writeAtomic("jq/emoji.json", JSON.stringify({ s: "\u{1F600}".repeat(300) }));
+    const jqEmoji = textOf(await jq.handler({ path: "jq/emoji.json", query: "s", maxTokens: 7 }));
+    let loneSurrogate = false;
+    for (let i = 0; i < jqEmoji.length; i++) {
+      const c = jqEmoji.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) {
+        const n = jqEmoji.charCodeAt(i + 1);
+        if (n >= 0xdc00 && n <= 0xdfff) i++;
+        else { loneSurrogate = true; break; }
+      } else if (c >= 0xdc00 && c <= 0xdfff) { loneSurrogate = true; break; }
+    }
+    check("json_query render is surrogate-safe", jqEmoji.includes("truncated") && !loneSurrogate);
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

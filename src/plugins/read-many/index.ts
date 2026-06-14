@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { readTarget } from "../../core/read.js";
 import { errMessage, fail, ok } from "../../core/result.js";
+import { truncate } from "../../core/text.js";
 
 /**
  * `read_many` — read several symbols / line ranges / files in ONE call (the
@@ -71,7 +72,16 @@ export function readManyPlugin(): Plugin {
               });
               const text = r.content.map((c) => c.text).join("\n");
               const block = `### ${describe(t)}${r.isError ? " (error)" : ""}\n${text}`;
-              if (shown > 0 && used + block.length + 2 > budgetChars) {
+              const room = budgetChars - used - 2;
+              if (block.length > room) {
+                if (shown > 0) {
+                  truncated = true;
+                  break;
+                }
+                // First target alone exceeds the budget: emit a bounded slice
+                // (surrogate-safe) rather than dumping it whole.
+                blocks.push(`${truncate(block, Math.max(0, room))}\n… [truncated — raise maxTokens]`);
+                shown++;
                 truncated = true;
                 break;
               }
