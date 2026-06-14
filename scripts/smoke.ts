@@ -34,6 +34,7 @@ import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
 import { changeCoveragePlugin } from "../src/plugins/change-coverage/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
+import { commitLogPlugin } from "../src/plugins/commit-log/index.js";
 import { conflictDigestPlugin } from "../src/plugins/conflict-digest/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
@@ -904,6 +905,16 @@ async function main(): Promise<void> {
       const chcT = textOf(await chc.handler({}));
       check("change_coverage flags covered vs uncovered changed lines", chcT.includes("cov.ts:5") && chcT.includes("uncovered") && chcT.includes("1/2") && chcT.includes("function uncovered"));
       check("change_coverage missing artifact errors", (await chc.handler({ artifact: "nope/lcov.info" })).isError === true);
+
+      // commit_log: compact history
+      const clPlugin = commitLogPlugin();
+      await clPlugin.init?.(gctx);
+      const cl = tool(clPlugin, "commit_log");
+      const clt = textOf(await cl.handler({}));
+      check("commit_log lists commits", clt.includes("init") && clt.includes("add cov") && clt.includes("commit(s)"));
+      check("commit_log path scope", textOf(await cl.handler({ path: "mod.ts" })).includes("add mod"));
+      check("commit_log limit caps", textOf(await cl.handler({ limit: 1 })).includes("— 1 commit(s)"));
+      check("commit_log invalid ref rejected", (await cl.handler({ ref: "--evil" })).isError === true);
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }
