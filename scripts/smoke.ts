@@ -30,6 +30,7 @@ import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
+import { codeContextPlugin } from "../src/plugins/code-context/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
@@ -563,6 +564,21 @@ async function main(): Promise<void> {
     check("grep_context excludes unrelated symbols", !g1t.includes("Svc.stop"));
     check("grep_context no match", textOf(await gc.handler({ pattern: "zzznope", path: "gc" })).includes("No matches"));
     check("grep_context invalid regex", (await gc.handler({ pattern: "(", path: "gc" })).isError === true);
+
+    // --- code_context plugin --------------------------------------------
+    await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");
+    await ctx.fs.writeAtomic("cc/main.ts", "import { helper } from './util';\nexport function compute(n: number): number {\n  return helper(n) + 1;\n}\n");
+    await ctx.fs.writeAtomic("cc/use.ts", "import { compute } from './main';\nconsole.log(compute(5));\n");
+    const ccxPlugin = codeContextPlugin();
+    await ccxPlugin.init?.(ctx);
+    const ccx = tool(ccxPlugin, "code_context");
+
+    const c1 = await ccx.handler({ symbol: "compute", path: "cc" });
+    const c1t = textOf(c1);
+    check("code_context shows the definition", !c1.isError && c1t.includes("Definition — function compute") && c1t.includes("return helper(n) + 1;"));
+    check("code_context lists used workspace symbols", c1t.includes("Uses (") && c1t.includes("function helper(x: number): number"));
+    check("code_context lists references", c1t.includes("Referenced from") && c1t.includes("cc/use.ts:2:"));
+    check("code_context handles unknown symbol", textOf(await ccx.handler({ symbol: "doesNotExistXYZ", path: "cc" })).includes("no definition"));
 
     // --- repo_map plugin ------------------------------------------------
     await ctx.fs.writeAtomic("rmap/api.ts", "export class Service {\n  run() {}\n}\nexport function helper() {}\nexport interface Opts { x: number }\n");

@@ -16,6 +16,7 @@ import { Scanner } from "./services/scan.js";
 
 import { codeEditPlugin } from "./plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "./plugins/code-outline/index.js";
+import { codeContextPlugin } from "./plugins/code-context/index.js";
 import { codeReadPlugin } from "./plugins/code-read/index.js";
 import { codeSearchPlugin } from "./plugins/code-search/index.js";
 import { applyPatchPlugin } from "./plugins/apply-patch/index.js";
@@ -40,6 +41,7 @@ const plugins: Plugin[] = [
   codeSearchPlugin(),
   grepContextPlugin(),
   findReferencesPlugin(),
+  codeContextPlugin(),
   repoMapPlugin(),
   diffDigestPlugin(),
   codeCheckPlugin(),
