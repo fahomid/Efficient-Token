@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the thirty-three free tools",
-      names.join(",") === "apply_patch,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate",
+      "tools/list returns the thirty-four free tools",
+      names.join(",") === "apply_patch,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate,type_closure",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory", "trace_locate", "import_map"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory", "trace_locate", "import_map", "type_closure"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -198,6 +198,10 @@ async function main(): Promise<void> {
     await client.callTool({ name: "code_write", arguments: { path: "gen/user.ts", content: "import { dep } from './dep.js';\nexport const u = dep;\n" } });
     const imap = await client.callTool({ name: "import_map", arguments: { path: "gen/dep.ts", direction: "importers" } });
     check("import_map over the wire", !imap.isError && resultText(imap).includes("gen/user.ts:1"));
+
+    await client.callTool({ name: "code_write", arguments: { path: "gen/types.ts", content: "export interface Inner { v: number; }\nexport interface Outer { inner: Inner; }\n" } });
+    const tclo = await client.callTool({ name: "type_closure", arguments: { symbol: "Outer", path: "gen" } });
+    check("type_closure over the wire", !tclo.isError && resultText(tclo).includes("interface Outer") && resultText(tclo).includes("interface Inner"));
 
     const readMany = await client.callTool({ name: "read_many", arguments: { reads: [{ path: "sample.ts", symbol: "add" }, { path: "sample.ts", symbol: "Greeter" }] } });
     const rmt = resultText(readMany);

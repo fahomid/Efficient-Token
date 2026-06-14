@@ -65,6 +65,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `symbol_find` | Find where symbols are **defined** by name — exact or `substring` (fuzzy recall) — returning `file:line` + kind + signature; optional `kind` filter. *(read-only)* |
 | `grep_context` | Regex search that returns each match **with its enclosing function/class source** (deduped, line-numbered, matched lines marked `›`) — one call instead of search → open-each-file. *(read-only)* |
 | `code_context` | One-shot **task primer** for a symbol: its definition source + the workspace symbols it **uses** (with signatures) + where it's **referenced** — primes a task without chasing dependencies. *(read-only)* |
+| `type_closure` | A type's definition **plus the verbatim defs of the workspace types it transitively references** (cycle-safe, depth-bounded) — understand a complex type in one call instead of chasing each referenced type. *(read-only)* |
 | `repo_map` | A token-bounded **table of contents**: the file tree grouped by directory, with each source file's top-level symbols (classes/functions/types). Orient in a codebase without reading files. *(read-only)* |
 | `diff_digest` | Review git changes as **hunks only** (or a `--stat` summary / file list) — `ref`/`staged`/`path` scoped — instead of reading whole changed files. Read-only git. *(read-only)* |
 | `commit_log` | Compact **commit history** — one row per commit (`sha date author subject`, no bodies/diffs) — scoped by `path`/`ref`/`limit`, instead of raw `git log`. *(read-only)* |

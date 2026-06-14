@@ -46,6 +46,7 @@ import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "./plugins/symbol-history/index.js";
 import { traceLocatePlugin } from "./plugins/trace-locate/index.js";
+import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 
 const VERSION = "0.1.0";
 
@@ -68,6 +69,7 @@ const plugins: Plugin[] = [
   callSitesPlugin(),
   markerInventoryPlugin(),
   importMapPlugin(),
+  typeClosurePlugin(),
   codeContextPlugin(),
   repoMapPlugin(),
   diffDigestPlugin(),

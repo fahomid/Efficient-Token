@@ -55,6 +55,7 @@ import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
 import { traceLocatePlugin } from "../src/plugins/trace-locate/index.js";
+import { typeClosurePlugin } from "../src/plugins/type-closure/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
 export class Greeter {
@@ -819,6 +820,17 @@ async function main(): Promise<void> {
     const imImporters = textOf(await im.handler({ path: "im/b.ts", direction: "importers" }));
     check("import_map finds importers", imImporters.includes("im/a.ts:1") && imImporters.includes("im/c.ts:1") && imImporters.includes("importers (2)"));
     check("import_map both directions", textOf(await im.handler({ path: "im/a.ts" })).includes("imports (") && textOf(await im.handler({ path: "im/a.ts" })).includes("importers"));
+
+    // --- type_closure plugin --------------------------------------------
+    await ctx.fs.writeAtomic("tc/types.ts", "export interface Coord { v: number; }\nexport interface Point { c: Coord; }\nexport interface Shape { p: Point; }\n");
+    const tcPl = typeClosurePlugin();
+    await tcPl.init?.(ctx);
+    const tc = tool(tcPl, "type_closure");
+    const tcDeep = textOf(await tc.handler({ symbol: "Shape", path: "tc", maxDepth: 2 }));
+    check("type_closure pulls referenced types transitively", tcDeep.includes("interface Shape") && tcDeep.includes("interface Point") && tcDeep.includes("interface Coord"));
+    const tcShallow = textOf(await tc.handler({ symbol: "Shape", path: "tc", maxDepth: 1 }));
+    check("type_closure respects maxDepth", tcShallow.includes("interface Point") && !tcShallow.includes("interface Coord"));
+    check("type_closure unknown type errors", (await tc.handler({ symbol: "NopeType", path: "tc" })).isError === true);
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");
