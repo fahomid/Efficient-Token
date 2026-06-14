@@ -34,6 +34,7 @@ import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { lineBlamePlugin } from "./plugins/line-blame/index.js";
+import { markerInventoryPlugin } from "./plugins/marker-inventory/index.js";
 import { notePlugin } from "./plugins/note/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
 import { readAtRevPlugin } from "./plugins/read-at-rev/index.js";
@@ -63,6 +64,7 @@ const plugins: Plugin[] = [
   findReferencesPlugin(),
   symbolFindPlugin(),
   callSitesPlugin(),
+  markerInventoryPlugin(),
   codeContextPlugin(),
   repoMapPlugin(),
   diffDigestPlugin(),

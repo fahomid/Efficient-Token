@@ -43,6 +43,7 @@ import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
+import { markerInventoryPlugin } from "../src/plugins/marker-inventory/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { readAtRevPlugin } from "../src/plugins/read-at-rev/index.js";
@@ -779,6 +780,19 @@ async function main(): Promise<void> {
     check("call_sites reports none cleanly", textOf(await calls.handler({ symbol: "zzzNope", path: "cs" })).includes("No call sites"));
     await ctx.fs.writeAtomic("csj/data.json", '{"a":1}\n');
     check("call_sites notes unsupported language", textOf(await calls.handler({ symbol: "x", path: "csj" })).includes("No call-site analysis"));
+
+    // --- marker_inventory plugin ----------------------------------------
+    await ctx.fs.writeAtomic("mk/a.ts", "// TODO: refactor this\nconst x = 1; // FIXME later\nfunction f() {} // not a marker\nconst TODOLIST = []; // a list, the word todo appears\n");
+    await ctx.fs.writeAtomic("mk/b.py", "# HACK: temporary\nx = 1\n");
+    const mkPl = markerInventoryPlugin();
+    await mkPl.init?.(ctx);
+    const mk = tool(mkPl, "marker_inventory");
+    const mkRes = textOf(await mk.handler({ path: "mk" }));
+    check("marker_inventory groups TODO/FIXME/HACK", mkRes.includes("TODO (1)") && mkRes.includes("refactor this") && mkRes.includes("FIXME (1)") && mkRes.includes("HACK (1)") && mkRes.includes("mk/b.py:1"));
+    check("marker_inventory ignores prose/non-comment", !mkRes.includes("a list, the word"));
+    const mkHack = textOf(await mk.handler({ path: "mk", tags: ["HACK"] }));
+    check("marker_inventory custom tags", mkHack.includes("HACK (1)") && !mkHack.includes("TODO ("));
+    check("marker_inventory none", textOf(await mk.handler({ path: "mk", tags: ["NOPEMARK"] })).includes("No markers"));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");

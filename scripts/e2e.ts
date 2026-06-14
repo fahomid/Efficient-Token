@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the thirty free tools",
-      names.join(",") === "apply_patch,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,json_query,line_blame,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history",
+      "tools/list returns the thirty-one free tools",
+      names.join(",") === "apply_patch,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,json_query,line_blame,marker_inventory,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -186,6 +186,10 @@ async function main(): Promise<void> {
     await client.callTool({ name: "code_write", arguments: { path: "gen/caller.ts", content: "export function caller() {\n  return add(1, 2) + add(3, 4);\n}\n" } });
     const callsRes = await client.callTool({ name: "call_sites", arguments: { symbol: "add", path: "gen" } });
     check("call_sites over the wire", !callsRes.isError && resultText(callsRes).includes("gen/caller.ts:2") && resultText(callsRes).includes("caller"));
+
+    await client.callTool({ name: "code_write", arguments: { path: "gen/todo.ts", content: "// TODO: wire this up\nexport const z = 1;\n" } });
+    const markers = await client.callTool({ name: "marker_inventory", arguments: { path: "gen" } });
+    check("marker_inventory over the wire", !markers.isError && resultText(markers).includes("TODO (1)") && resultText(markers).includes("wire this up"));
 
     const readMany = await client.callTool({ name: "read_many", arguments: { reads: [{ path: "sample.ts", symbol: "add" }, { path: "sample.ts", symbol: "Greeter" }] } });
     const rmt = resultText(readMany);
