@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the thirty-five free tools",
-      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate,type_closure",
+      "tools/list returns the thirty-six free tools",
+      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate,type_closure",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory", "trace_locate", "import_map", "type_closure", "call_hierarchy"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory", "trace_locate", "import_map", "type_closure", "call_hierarchy", "outline_diff"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -241,6 +241,8 @@ async function main(): Promise<void> {
     check("commit_log responds gracefully (non-repo) over the wire", cl.isError === true && resultText(cl).includes("not a git repository"));
     const lb = await client.callTool({ name: "line_blame", arguments: { path: "sample.ts" } });
     check("line_blame responds gracefully (non-repo) over the wire", lb.isError === true && resultText(lb).includes("not a git repository"));
+    const od = await client.callTool({ name: "outline_diff", arguments: { ref: "HEAD" } });
+    check("outline_diff responds gracefully (non-repo) over the wire", od.isError === true && resultText(od).includes("not a git repository"));
 
     const checked = await client.callTool({ name: "code_check", arguments: { script: "ok" } });
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));

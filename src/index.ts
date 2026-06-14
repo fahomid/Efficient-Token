@@ -38,6 +38,7 @@ import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { lineBlamePlugin } from "./plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "./plugins/marker-inventory/index.js";
 import { notePlugin } from "./plugins/note/index.js";
+import { outlineDiffPlugin } from "./plugins/outline-diff/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
 import { readAtRevPlugin } from "./plugins/read-at-rev/index.js";
 import { readManyPlugin } from "./plugins/read-many/index.js";
@@ -77,6 +78,7 @@ const plugins: Plugin[] = [
   diffDigestPlugin(),
   reviewBranchPlugin(),
   symbolHistoryPlugin(),
+  outlineDiffPlugin(),
   conflictDigestPlugin(),
   changeCoveragePlugin(),
   commitLogPlugin(),

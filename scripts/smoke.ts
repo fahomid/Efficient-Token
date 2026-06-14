@@ -47,6 +47,7 @@ import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "../src/plugins/marker-inventory/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
+import { outlineDiffPlugin } from "../src/plugins/outline-diff/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { readAtRevPlugin } from "../src/plugins/read-at-rev/index.js";
 import { readManyPlugin } from "../src/plugins/read-many/index.js";
@@ -992,6 +993,16 @@ async function main(): Promise<void> {
       check("line_blame scopes to a symbol", lbSym.includes("function alpha") && lbSym.includes("bump alpha"));
       await fsp.writeFile(path.join(gitRoot, "mod.ts"), "export function alpha() {\n  return 999;\n}\nexport function beta() {\n  return 2;\n}\n");
       check("line_blame marks uncommitted lines", textOf(await lb.handler({ path: "mod.ts", startLine: 2, endLine: 2 })).includes("uncommitted"));
+
+      // outline_diff: symbol-level rev-to-rev delta (HEAD vs working tree)
+      await fsp.writeFile(path.join(gitRoot, "mod.ts"), "export function alpha() {\n  return 999;\n}\nexport function gamma() {\n  return 7;\n}\n");
+      const odPlugin = outlineDiffPlugin();
+      await odPlugin.init?.(gctx);
+      const od = tool(odPlugin, "outline_diff");
+      const odRes = textOf(await od.handler({ ref: "HEAD" }));
+      check("outline_diff classifies added/removed/changed",
+        odRes.includes("mod.ts") && odRes.includes("~ changed: function alpha") && odRes.includes("- removed: function beta") && odRes.includes("+ added: function gamma"));
+      check("outline_diff invalid ref rejected", (await od.handler({ ref: "--evil" })).isError === true);
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }
