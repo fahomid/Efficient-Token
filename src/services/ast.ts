@@ -413,6 +413,9 @@ export class AstService {
       const c = node.childForFieldName(f);
       if (c && IDENT_TYPES.has(c.type)) return c.text;
     }
+    // Computed/subscript callees (obj[key](), arr[i]()) have no static name; the
+    // last named child is the index expression, not the callee — don't guess.
+    if (node.type === "subscript_expression" || node.type === "subscript") return undefined;
     let last: Node | undefined;
     for (let i = 0; i < node.namedChildCount; i++) {
       const c = node.namedChild(i);
@@ -536,7 +539,11 @@ export class AstService {
     src: string,
     container: string | undefined,
     out: SymbolInfo[],
+    depth = 0,
   ): void {
+    // Defensive bound (mirrors walkCalls/collectErrors): a pathologically nested
+    // AST must truncate the outline, not overflow the V8 stack mid-walk.
+    if (depth > 2000 || out.length > 50000) return;
     for (let i = 0; i < node.namedChildCount; i++) {
       const child = node.namedChild(i);
       if (!child) continue;
@@ -546,9 +553,9 @@ export class AstService {
           out.push(container !== undefined ? { ...d, container } : d);
         }
         // Recurse with the first definition's name as the container for members.
-        this.walk(child, src, defs[0]!.name, out);
+        this.walk(child, src, defs[0]!.name, out, depth + 1);
       } else {
-        this.walk(child, src, container, out);
+        this.walk(child, src, container, out, depth + 1);
       }
     }
   }

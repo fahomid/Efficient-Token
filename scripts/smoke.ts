@@ -787,6 +787,9 @@ async function main(): Promise<void> {
     check("call_sites reports none cleanly", textOf(await calls.handler({ symbol: "zzzNope", path: "cs" })).includes("No call sites"));
     await ctx.fs.writeAtomic("csj/data.json", '{"a":1}\n');
     check("call_sites notes unsupported language", textOf(await calls.handler({ symbol: "x", path: "csj" })).includes("No call-site analysis"));
+    // adversarial-review fix: computed/subscript calls obj[key]() are not false hits for `key`
+    await ctx.fs.writeAtomic("cs/sub.ts", "const key = 'm';\nconst obj: Record<string, () => void> = {};\nobj[key]();\n");
+    check("call_sites ignores computed/subscript calls", !textOf(await calls.handler({ symbol: "key", path: "cs" })).includes("cs/sub.ts:3"));
 
     // --- marker_inventory plugin ----------------------------------------
     await ctx.fs.writeAtomic("mk/a.ts", "// TODO: refactor this\nconst x = 1; // FIXME later\nfunction f() {} // not a marker\nconst TODOLIST = []; // a list, the word todo appears\n");
@@ -864,6 +867,20 @@ async function main(): Promise<void> {
     check("move_symbol re-imports into source when still used", aAfter.includes('import { moved } from "./b'));
     check("move_symbol rewrites named importers", cAfter.includes('from "./b.js"') && !cAfter.includes('from "./a.js"'));
     check("move_symbol unknown symbol errors", (await ms.handler({ symbol: "nopeSym", from: "ms/a.ts", to: "ms/b.ts" })).isError === true);
+    // adversarial-review fix: a same-named import of a DIFFERENT (dotted) module must NOT be rewritten
+    await ctx.fs.writeAtomic("ms2/config.ts", "export function cfg() { return 1; }\n");
+    await ctx.fs.writeAtomic("ms2/config.local.ts", "export function cfg() { return 2; }\n");
+    await ctx.fs.writeAtomic("ms2/app.ts", 'import { cfg } from "./config.local.js";\nexport const zz = cfg();\n');
+    const mv2 = await ms.handler({ symbol: "cfg", from: "ms2/config.ts", to: "ms2/lib.ts" });
+    const app2 = (await ctx.fs.read("ms2/app.ts")).content;
+    check("move_symbol does not rewrite a same-named import of a different module", !mv2.isError && app2.includes('from "./config.local.js"') && !app2.includes("lib"));
+    // adversarial-review fix: BOM preserved in a rewritten importer
+    const BOM3 = String.fromCharCode(0xfeff);
+    await ctx.fs.writeAtomic("ms3/dep.ts", "export function giz() { return 1; }\n");
+    await ctx.fs.writeAtomic("ms3/use.ts", `${BOM3}import { giz } from "./dep.js";\nexport const qq = giz();\n`);
+    await ms.handler({ symbol: "giz", from: "ms3/dep.ts", to: "ms3/lib.ts" });
+    const use3 = (await ctx.fs.readRaw("ms3/use.ts")).content;
+    check("move_symbol preserves BOM in a rewritten importer", use3.charCodeAt(0) === 0xfeff && use3.includes('"./lib'));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");
@@ -991,6 +1008,10 @@ async function main(): Promise<void> {
       const chcT = textOf(await chc.handler({}));
       check("change_coverage flags covered vs uncovered changed lines", chcT.includes("cov.ts:5") && chcT.includes("uncovered") && chcT.includes("1/2") && chcT.includes("function uncovered"));
       check("change_coverage missing artifact errors", (await chc.handler({ artifact: "nope/lcov.info" })).isError === true);
+      // adversarial-review fix: a cross-root/absolute lcov SF path matches by trailing-segment
+      await fsp.writeFile(path.join(gitRoot, "coverage", "abs.info"), "SF:/ci/build/cov.ts\nDA:2,4\nDA:5,0\nend_of_record\n");
+      const chcAbs = textOf(await chc.handler({ artifact: "coverage/abs.info" }));
+      check("change_coverage matches absolute/cross-root lcov SF by suffix", chcAbs.includes("cov.ts:5") && chcAbs.includes("1/2"));
 
       // commit_log: compact history
       const clPlugin = commitLogPlugin();
@@ -1023,6 +1044,12 @@ async function main(): Promise<void> {
       check("outline_diff classifies added/removed/changed",
         odRes.includes("mod.ts") && odRes.includes("~ changed: function alpha") && odRes.includes("- removed: function beta") && odRes.includes("+ added: function gamma"));
       check("outline_diff invalid ref rejected", (await od.handler({ ref: "--evil" })).isError === true);
+      // adversarial-review fix: a change to the SECOND of two same-keyed (overload) defs is detected
+      await fsp.writeFile(path.join(gitRoot, "dup.ts"), "export function dup() {\n  return 1;\n}\nexport function dup() {\n  return 2;\n}\n");
+      await g(["add", "dup.ts"]);
+      await g(["commit", "-q", "-m", "add dup"]);
+      await fsp.writeFile(path.join(gitRoot, "dup.ts"), "export function dup() {\n  return 1;\n}\nexport function dup() {\n  return 22;\n}\n");
+      check("outline_diff detects a change in a duplicate-keyed (overload) symbol", textOf(await od.handler({ ref: "HEAD" })).includes("~ changed: function dup"));
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }
@@ -1039,7 +1066,9 @@ async function main(): Promise<void> {
       await gc(["add", "c.txt"]);
       await gc(["commit", "-q", "-m", "base"]);
       await gc(["checkout", "-q", "-b", "other"]);
-      await fsp.writeFile(path.join(conflictRoot, "c.txt"), "top\ntheirs-mid\nbottom\n");
+      // theirs side deliberately contains a "=======" content line (a marker-looking
+      // line) to prove the parser does not drop it as a separator.
+      await fsp.writeFile(path.join(conflictRoot, "c.txt"), "top\ntheirs-mid\n=======\nmore\nbottom\n");
       await gc(["commit", "-q", "-am", "theirs"]);
       await gc(["checkout", "-q", "-"]);
       await fsp.writeFile(path.join(conflictRoot, "c.txt"), "top\nours-mid\nbottom\n");
@@ -1064,6 +1093,7 @@ async function main(): Promise<void> {
       const cdt = textOf(await cd.handler({}));
       check("conflict_digest lists conflicted files", cdt.includes("c.txt") && cdt.includes("conflict(s)"));
       check("conflict_digest shows ours and theirs verbatim", cdt.includes("ours-mid") && cdt.includes("theirs-mid") && cdt.includes("--- ours ---") && cdt.includes("--- theirs ---"));
+      check("conflict_digest preserves a marker-looking content line in theirs", cdt.includes("=======") && cdt.includes("more"));
       await gc(["merge", "--abort"]);
       check("conflict_digest reports none when clean", textOf(await cd.handler({})).includes("No unresolved merge conflicts"));
     } finally {
@@ -1142,6 +1172,7 @@ async function main(): Promise<void> {
       check("test_run rejects metacharacters in filter", (await tr.handler({ script: "ok", filter: "x; echo HACKED" })).isError === true);
       check("test_run rejects command substitution", (await tr.handler({ script: "ok", filter: "$(touch pwned)" })).isError === true);
       check("test_run rejects backticks/pipes", (await tr.handler({ script: "ok", filter: "a | b `c`" })).isError === true);
+      check("test_run rejects a leading-dash filter (arg injection)", (await tr.handler({ script: "ok", filter: "--config=./evil.cjs" })).isError === true);
       check("test_run rejects unsafe script name", (await tr.handler({ script: "a; rm -rf /", filter: "x" })).isError === true);
       // belt-and-suspenders: an injection attempt is rejected BEFORE running (no side effect)
       await tr.handler({ script: "ok", filter: 'x && node -e "require(\'fs\').writeFileSync(\'PWNED\',\'x\')"' });

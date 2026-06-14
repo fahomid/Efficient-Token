@@ -1,3 +1,4 @@
+import { promises as fsp } from "node:fs";
 import path from "node:path";
 
 import { z } from "zod";
@@ -105,16 +106,27 @@ export function moveSymbolPlugin(): Plugin {
             }
 
             // 5) Rewrite named imports/re-exports of the symbol elsewhere: from -> to.
-            const fromKey = stripExt(fromAbs).toLowerCase();
+            const fromKey = moduleKey(fromAbs).toLowerCase();
             const rewrites: PlanFile[] = [];
             const flagged: string[] = [];
             const scan = await ctx.scan.files({ exts: JS_EXTS, maxFiles: MAX_SCAN_FILES });
             for (const f of scan.files) {
               if (sameFile(f.abs, fromAbs) || sameFile(f.abs, toAbs)) continue;
-              const content = await readText(ctx, f.rel);
-              if (content === undefined || !content.includes(symbol)) continue;
+              let raw: string;
+              try {
+                raw = (await ctx.fs.readRaw(f.rel)).content;
+              } catch {
+                continue;
+              }
+              if (raw.includes(String.fromCharCode(0))) continue; // skip binary
+              const bom = raw.charCodeAt(0) === 0xfeff;
+              const content = bom ? raw.slice(1) : raw;
+              if (!content.includes(symbol)) continue;
               const res = rewriteImports(content, symbol, f.abs, fromKey, toAbs);
-              if (res.changed) rewrites.push({ rel: f.rel, original: content, next: res.content });
+              if (res.changed) {
+                const lead = bom ? String.fromCharCode(0xfeff) : "";
+                rewrites.push({ rel: f.rel, original: lead + content, next: lead + res.content });
+              }
               if (res.flaggedNonNamed) flagged.push(f.rel);
             }
 
@@ -176,7 +188,7 @@ function rewriteImports(
   let changed = false;
   const out = content.replace(NAMED_FROM_RE, (full, kw: string, typeKw: string | undefined, names: string, spec: string) => {
     if (!isRelative(spec)) return full;
-    if (stripExt(path.resolve(path.dirname(importerAbs), spec)).toLowerCase() !== fromKey) return full;
+    if (moduleKey(path.resolve(path.dirname(importerAbs), spec)).toLowerCase() !== fromKey) return full;
     const parts = names.split(",").map((s) => s.trim()).filter(Boolean);
     const idx = parts.findIndex((p) => importedName(p) === symbol);
     if (idx === -1) return full;
@@ -244,6 +256,17 @@ function stripExt(p: string): string {
   return dot > slash ? norm.slice(0, dot) : norm;
 }
 
+const JS_EXT_RE = /\.(?:m|c)?[jt]sx?$/i;
+
+/**
+ * Module IDENTITY key: strip ONLY a real JS/TS extension (not any trailing dot
+ * segment), so `./config` and `./config.ts` unify but `./config.local` stays a
+ * DISTINCT module — preventing a rewrite of an unrelated same-named import.
+ */
+function moduleKey(p: string): string {
+  return p.replace(/\\/g, "/").replace(JS_EXT_RE, "");
+}
+
 function sameFile(a: string, b: string): boolean {
   const na = a.replace(/\\/g, "/");
   const nb = b.replace(/\\/g, "/");
@@ -254,20 +277,15 @@ async function rollback(ctx: CoreContext, written: PlanFile[]): Promise<string[]
   const failed: string[] = [];
   for (const pf of written) {
     try {
-      if (pf.original === null) continue; // a created file; best-effort leave it
-      await ctx.fs.writeAtomic(pf.rel, pf.original);
+      if (pf.original === null) {
+        // A file THIS operation created — delete it to honor all-or-nothing.
+        await fsp.rm(ctx.paths.resolve(pf.rel), { force: true });
+      } else {
+        await ctx.fs.writeAtomic(pf.rel, pf.original);
+      }
     } catch {
       failed.push(pf.rel);
     }
   }
   return failed;
-}
-
-async function readText(ctx: CoreContext, rel: string): Promise<string | undefined> {
-  try {
-    const { content } = await ctx.fs.read(rel);
-    return content.includes(String.fromCharCode(0)) ? undefined : content;
-  } catch {
-    return undefined;
-  }
 }

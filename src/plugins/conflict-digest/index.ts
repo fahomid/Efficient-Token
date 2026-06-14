@@ -70,6 +70,10 @@ export function conflictDigestPlugin(): Plugin {
                 out.push(`\n### ${rel} (could not read working tree)`);
                 continue;
               }
+              if (content.includes(String.fromCharCode(0))) {
+                out.push(`\n### ${rel} (binary — conflict not shown)`);
+                continue;
+              }
               const blocks = parseConflicts(content);
               const fileHeader = `\n### ${rel} — ${blocks.length} conflict(s)`;
               if (used + fileHeader.length > budgetChars) {
@@ -125,12 +129,16 @@ function parseConflicts(content: string): ConflictBlock[] {
     i++;
     while (i < lines.length && !lines[i]!.startsWith(">>>>>>>")) {
       const l = lines[i]!;
-      if (l.startsWith("|||||||")) {
+      // Match git's marker GRAMMAR (a pure run of >=7 marker chars, base/ours
+      // may carry a " label") and honor section ORDER, so a content line that
+      // merely starts with `=======` or `|||||||` (a Markdown rule, a table row)
+      // is not mistaken for a separator and dropped.
+      if (section === "ours" && /^\|{7,}( .*)?$/.test(l)) {
         section = "base";
         i++;
         continue;
       }
-      if (l.startsWith("=======")) {
+      if (section !== "theirs" && /^={7,}$/.test(l)) {
         section = "theirs";
         i++;
         continue;

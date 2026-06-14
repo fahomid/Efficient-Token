@@ -5,7 +5,10 @@ const execFileP = promisify(execFile);
 
 /** Run a read-only git command in `cwd` and return stdout (no shell). */
 export async function runGit(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileP("git", args, {
+  // `core.quotePath=false` makes git emit non-ASCII paths literally (UTF-8)
+  // instead of C-quoted octal escapes, so diff `+++ b/…` headers and name lists
+  // carry real paths that match our workspace-relative keys.
+  const { stdout } = await execFileP("git", ["-c", "core.quotePath=false", ...args], {
     cwd,
     maxBuffer: 16 * 1024 * 1024,
     timeout: 20_000,

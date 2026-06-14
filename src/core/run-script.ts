@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 export interface RunResult {
   code: number;
@@ -22,7 +23,9 @@ export function runNpmScript(cwd: string, script: string, timeoutMs: number): Pr
  * (e.g. a test filter). Each arg is double-quoted into the command line; the
  * CALLER MUST validate every arg against a shell-safe allowlist (no quotes,
  * `$`, backticks, `%`, `!`, or shell metacharacters) so nothing can escape the
- * quotes — this is what keeps "only package.json scripts" intact.
+ * quotes, AND reject a leading `-` (which the receiving program would parse as
+ * an OPTION — argv-level injection that quoting cannot stop) — this is what
+ * keeps "only package.json scripts" intact.
  */
 export function runNpmScriptArgs(cwd: string, script: string, args: readonly string[], timeoutMs: number): Promise<RunResult> {
   const tail = args.length > 0 ? ` -- ${args.map((a) => `"${a}"`).join(" ")}` : "";
@@ -42,14 +45,20 @@ function runShell(cwd: string, commandLine: string, timeoutMs: number): Promise<
     let output = "";
     let bytes = 0;
     const cap = 16 * 1024 * 1024;
-    const onData = (d: Buffer): void => {
-      if (bytes >= cap) return;
-      const s = d.toString("utf8");
-      output += s;
-      bytes += s.length;
+    // One incremental decoder per stream so a multibyte UTF-8 sequence split
+    // across two chunks is reassembled (not corrupted to U+FFFD). `bytes` counts
+    // real UTF-8 bytes so the 16 MiB cap matches its name.
+    const makeOnData = (): ((d: Buffer) => void) => {
+      const decoder = new StringDecoder("utf8");
+      return (d: Buffer): void => {
+        if (bytes >= cap) return;
+        const s = decoder.write(d);
+        output += s;
+        bytes += Buffer.byteLength(s, "utf8");
+      };
     };
-    child.stdout?.on("data", onData);
-    child.stderr?.on("data", onData);
+    child.stdout?.on("data", makeOnData());
+    child.stderr?.on("data", makeOnData());
 
     let timedOut = false;
     let settled = false;

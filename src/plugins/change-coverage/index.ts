@@ -87,7 +87,7 @@ export function changeCoveragePlugin(): Plugin {
             let truncated = false;
 
             for (const [rel, fileRanges] of ranges) {
-              const lines = cov.get(rel.toLowerCase());
+              const lines = lookupCoverage(cov, rel);
               if (lines === undefined) {
                 const block = `\n${rel}: (no coverage data)`;
                 if (used + block.length > budgetChars) { truncated = true; break; }
@@ -152,7 +152,11 @@ function parseLcov(text: string, root: string): Map<string, Map<number, number>>
     if (line.startsWith("SF:")) {
       const sf = line.slice(3).trim();
       const abs = path.isAbsolute(sf) ? sf : path.join(root, sf);
-      key = path.relative(root, abs).split(path.sep).join("/").toLowerCase();
+      const rebased = path.relative(root, abs).split(path.sep).join("/").toLowerCase();
+      // If the artifact's path can't be rebased under root (CI/monorepo absolute
+      // SF paths), key by the normalized SF so a trailing-segment match can find it.
+      const escapes = rebased.startsWith("../") || /^[a-z]:\//.test(rebased);
+      key = escapes ? sf.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase() : rebased;
       lines = new Map();
     } else if (lines && line.startsWith("DA:")) {
       const comma = line.indexOf(",", 3);
@@ -167,6 +171,22 @@ function parseLcov(text: string, root: string): Map<string, Map<number, number>>
     }
   }
   return map;
+}
+
+/** Exact key, else a UNIQUE coverage entry whose path ends with `/<rel>` (else undefined). */
+function lookupCoverage(cov: Map<string, Map<number, number>>, rel: string): Map<number, number> | undefined {
+  const key = rel.toLowerCase();
+  const exact = cov.get(key);
+  if (exact) return exact;
+  const suffix = `/${key}`;
+  let hit: Map<number, number> | undefined;
+  for (const [k, v] of cov) {
+    if (k.endsWith(suffix)) {
+      if (hit) return undefined; // ambiguous — don't guess (stay deterministic)
+      hit = v;
+    }
+  }
+  return hit;
 }
 
 async function safeOutline(ctx: CoreContext, rel: string) {

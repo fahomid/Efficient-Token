@@ -47,8 +47,10 @@ export function testRunPlugin(): Plugin {
             const script = String(args.script);
             if (!SAFE_SCRIPT.test(script)) return fail(`invalid script name: ${JSON.stringify(script)}.`);
             const filter = args.filter === undefined ? undefined : String(args.filter);
-            if (filter !== undefined && (filter.trim() === "" || !SAFE_FILTER.test(filter))) {
-              return fail(`invalid filter: ${JSON.stringify(filter)}. Use plain test names/paths (no shell metacharacters).`);
+            if (filter !== undefined && (filter.trim() === "" || filter.trim().startsWith("-") || !SAFE_FILTER.test(filter))) {
+              // A leading "-" would be parsed as an OPTION by the test runner
+              // (e.g. --config/--require -> arbitrary code at load), so reject it.
+              return fail(`invalid filter: ${JSON.stringify(filter)}. Use a plain test name/path (must not start with "-", no shell metacharacters).`);
             }
             const maxTokens = args.maxTokens === undefined ? ctx.config.maxReadTokens : Number(args.maxTokens);
             const timeoutMs = Math.min(args.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : Number(args.timeoutMs), MAX_TIMEOUT_MS);
