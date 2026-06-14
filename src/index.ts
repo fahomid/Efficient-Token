@@ -28,6 +28,7 @@ import { findReferencesPlugin } from "./plugins/find-references/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { notePlugin } from "./plugins/note/index.js";
+import { projectRenamePlugin } from "./plugins/project-rename/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 
@@ -53,6 +54,7 @@ const plugins: Plugin[] = [
   codeEditPlugin(),
   codeWritePlugin(),
   applyPatchPlugin(),
+  projectRenamePlugin(),
   notePlugin(),
 ];
 

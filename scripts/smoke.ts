@@ -37,6 +37,7 @@ import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
+import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 
@@ -488,6 +489,25 @@ async function main(): Promise<void> {
     check("note_read missing note", (await nr.handler({ name: "nope" })).isError === true);
     check("note_write rejects unsafe name", (await nw.handler({ name: "../evil", content: "x" })).isError === true);
     check("note_read rejects unsafe name", (await nr.handler({ name: "../evil" })).isError === true);
+
+    // --- project_rename plugin ------------------------------------------
+    await ctx.fs.writeAtomic("pr/a.ts", "export function widget() { return 1; }\nexport const w = widget();\n");
+    await ctx.fs.writeAtomic("pr/b.ts", "import { widget } from './a';\nconst x = widget() + widget();\nconst widgetage = 5;\n");
+    const prPlugin = projectRenamePlugin();
+    await prPlugin.init?.(ctx);
+    const pr = tool(prPlugin, "project_rename");
+
+    const dry = textOf(await pr.handler({ oldName: "widget", newName: "gadget", path: "pr", dryRun: true }));
+    check("project_rename dry run reports without writing", dry.includes("[dry run]") && dry.includes("pr/a.ts: 2") && dry.includes("pr/b.ts: 3") && (await ctx.fs.read("pr/a.ts")).content.includes("widget"));
+
+    const ren = await pr.handler({ oldName: "widget", newName: "gadget", path: "pr" });
+    check("project_rename renames across files", !ren.isError
+      && (await ctx.fs.read("pr/a.ts")).content === "export function gadget() { return 1; }\nexport const w = gadget();\n"
+      && (await ctx.fs.read("pr/b.ts")).content === "import { gadget } from './a';\nconst x = gadget() + gadget();\nconst widgetage = 5;\n");
+    check("project_rename preserves identifier boundaries", (await ctx.fs.read("pr/b.ts")).content.includes("widgetage = 5"));
+    check("project_rename rejects invalid newName", (await pr.handler({ oldName: "gadget", newName: "1bad", path: "pr" })).isError === true);
+    check("project_rename rejects identical names", (await pr.handler({ oldName: "x", newName: "x", path: "pr" })).isError === true);
+    check("project_rename handles no occurrences", textOf(await pr.handler({ oldName: "nonexistentZZZ", newName: "y", path: "pr" })).includes("No occurrences"));
 
     // --- code_search plugin (Grep semantics) ----------------------------
     await ctx.fs.writeAtomic("srch/a.ts", "export function alpha() {}\nconst beta = 1;\n");

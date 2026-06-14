@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the seventeen free tools",
-      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,note_read,note_write,repo_map,review_branch",
+      "tools/list returns the eighteen free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,note_read,note_write,project_rename,repo_map,review_branch",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -190,6 +190,12 @@ async function main(): Promise<void> {
     await client.callTool({ name: "note_write", arguments: { name: "scratch", content: "remember this\n" } });
     const noteRead = await client.callTool({ name: "note_read", arguments: { name: "scratch" } });
     check("note write/read round-trips over the wire", !noteRead.isError && resultText(noteRead).includes("remember this"));
+
+    await client.callTool({ name: "code_write", arguments: { path: "ren/r.ts", content: "export const foo = 1;\nexport const z = foo + foo;\n" } });
+    const renamed = await client.callTool({ name: "project_rename", arguments: { oldName: "foo", newName: "bar", path: "ren" } });
+    check("project_rename over the wire", !renamed.isError && resultText(renamed).includes("3 occurrence(s)"));
+    const renRead = await client.callTool({ name: "code_read", arguments: { path: "ren/r.ts" } });
+    check("project_rename persisted", resultText(renRead).includes("bar = 1") && resultText(renRead).includes("bar + bar") && !resultText(renRead).includes("foo"));
 
     const escaped = await client.callTool({
       name: "code_read",
