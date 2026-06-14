@@ -45,6 +45,10 @@ function resultText(res: { content?: Array<{ type: string; text?: string }> }): 
 async function main(): Promise<void> {
   const root = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-e2e-"));
   await fsp.writeFile(path.join(root, "sample.ts"), SAMPLE_TS, "utf8");
+  await fsp.writeFile(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "e2e-fixture", version: "1.0.0", scripts: { ok: 'node -e "process.exit(0)"' } }, null, 2),
+  );
 
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
@@ -67,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the nine free tools",
-      names.join(",") === "code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,health,repo_map",
+      "tools/list returns the ten free tools",
+      names.join(",") === "code_check,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,health,repo_map",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -83,6 +87,10 @@ async function main(): Promise<void> {
       ["code_edit", "code_write"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === false && byName.get(n)?.annotations?.destructiveHint === true,
       ),
+    );
+    check(
+      "code_check annotated non-read-only",
+      byName.get("code_check")?.annotations?.readOnlyHint === false,
     );
 
     const health = await client.callTool({ name: "health", arguments: {} });
@@ -143,6 +151,9 @@ async function main(): Promise<void> {
     // respond gracefully over the wire rather than crash.
     const dd = await client.callTool({ name: "diff_digest", arguments: {} });
     check("diff_digest responds gracefully (non-repo) over the wire", dd.isError === true && resultText(dd).includes("not a git repository"));
+
+    const checked = await client.callTool({ name: "code_check", arguments: { script: "ok" } });
+    check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));
 
     const escaped = await client.callTool({
       name: "code_read",

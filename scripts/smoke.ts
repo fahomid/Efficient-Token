@@ -28,6 +28,7 @@ import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
 import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
+import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
@@ -497,6 +498,47 @@ async function main(): Promise<void> {
       check("diff_digest staged mode", textOf(await dd.handler({ staged: true })).includes("+export const b = 3;"));
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
+    }
+
+    // --- code_check plugin ----------------------------------------------
+    // No package.json at the smoke root -> graceful error.
+    const ccNo = codeCheckPlugin();
+    await ccNo.init?.(ctx);
+    check("code_check needs package.json", (await tool(ccNo, "code_check").handler({ script: "test" })).isError === true);
+
+    const checkRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-check-"));
+    try {
+      const pkg = {
+        name: "t",
+        version: "1.0.0",
+        scripts: {
+          ok: 'node -e "process.exit(0)"',
+          bad: "node -e \"console.error('boomtoken123'); process.exit(3)\"",
+        },
+      };
+      await fsp.writeFile(path.join(checkRoot, "package.json"), JSON.stringify(pkg, null, 2));
+      const cPaths = new PathSandbox(checkRoot);
+      const cctx: CoreContext = {
+        ...ctx,
+        config: { ...config, root: checkRoot },
+        paths: cPaths,
+        fs: new SafeFs(cPaths, config.maxFileBytes),
+        scan: new Scanner(cPaths),
+      };
+      const ccp = codeCheckPlugin();
+      await ccp.init?.(cctx);
+      const cc = tool(ccp, "code_check");
+
+      const okRes = await cc.handler({ script: "ok" });
+      check("code_check pass is terse", !okRes.isError && textOf(okRes).includes("✓ ok: passed (exit 0") && !textOf(okRes).includes("boom"));
+      const badRes = await cc.handler({ script: "bad" });
+      check("code_check failure shows exit + output", !badRes.isError && textOf(badRes).includes("✗ bad: FAILED (exit ") && textOf(badRes).includes("boomtoken123"));
+      const missing = await cc.handler({ script: "nope" });
+      check("code_check missing script lists available", missing.isError === true && textOf(missing).includes("Available: ok, bad"));
+      const unsafe = await cc.handler({ script: "a b; rm -rf /" });
+      check("code_check rejects unsafe script name", unsafe.isError === true && textOf(unsafe).includes("invalid script name"));
+    } finally {
+      await fsp.rm(checkRoot, { recursive: true, force: true });
     }
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
