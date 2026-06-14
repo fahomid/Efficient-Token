@@ -46,6 +46,7 @@ import { importMapPlugin } from "../src/plugins/import-map/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "../src/plugins/marker-inventory/index.js";
+import { mediaInfoPlugin } from "../src/plugins/media-info/index.js";
 import { moveSymbolPlugin } from "../src/plugins/move-symbol/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { outlineDiffPlugin } from "../src/plugins/outline-diff/index.js";
@@ -740,6 +741,16 @@ async function main(): Promise<void> {
     const viMixNote = viMix.content.find((c) => c.type === "text");
     check("view_image skips non-raster (svg) but keeps the raster", viMix.content.filter((c) => c.type === "image").length === 1 && !!viMixNote && viMixNote.type === "text" && viMixNote.text.includes("svg"));
     check("view_image all-unsupported is an error", (await vi.handler({ paths: ["img/icon.svg"] })).isError === true);
+
+    // --- media_info plugin ----------------------------------------------
+    const miPlugin = mediaInfoPlugin();
+    await miPlugin.init?.(ctx);
+    const mi = tool(miPlugin, "media_info");
+    const miPng = textOf(await mi.handler({ paths: ["img/pixel.png"] }));
+    check("media_info reports image dimensions zero-dep", miPng.includes("png 1x1") && miPng.includes("1:1"));
+    await fsp.writeFile(path.join(root, "img/clip.mp4"), Buffer.from("not a real mp4"));
+    const miMp4 = textOf(await mi.handler({ paths: ["img/clip.mp4"] }));
+    check("media_info handles A/V path gracefully", miMp4.includes("clip.mp4") && (miMp4.includes("ffprobe") || miMp4.includes("probe failed") || miMp4.includes("mp4")));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

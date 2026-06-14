@@ -33,15 +33,36 @@ export function runNpmScriptArgs(cwd: string, script: string, args: readonly str
 }
 
 function runShell(cwd: string, commandLine: string, timeoutMs: number): Promise<RunResult> {
-  return new Promise((resolve) => {
-    const isWin = process.platform === "win32";
-    const child = spawn(commandLine, [], {
-      cwd,
-      shell: true, // needed for npm(.cmd); command is built from validated parts
-      windowsHide: true,
-      detached: !isWin, // own process group on POSIX, so we can kill the tree
-    });
+  const isWin = process.platform === "win32";
+  const child = spawn(commandLine, [], {
+    cwd,
+    shell: true, // needed for npm(.cmd); command is built from validated parts
+    windowsHide: true,
+    detached: !isWin, // own process group on POSIX, so we can kill the tree
+  });
+  return collect(child, isWin, timeoutMs);
+}
 
+/**
+ * Run a FIXED binary with an argv array and NO shell — user-supplied values
+ * (e.g. a file path) go as separate argv entries and therefore can't inject
+ * shell metacharacters or be re-split. The caller MUST pass a constant binary
+ * name (not user input). Same byte-cap + process-tree-kill as {@link runShell}.
+ * `notFound` is true when the binary is missing on PATH (ENOENT).
+ */
+export function runBinary(cwd: string, bin: string, args: readonly string[], timeoutMs: number): Promise<RunResult> {
+  const isWin = process.platform === "win32";
+  const child = spawn(bin, [...args], {
+    cwd,
+    shell: false,
+    windowsHide: true,
+    detached: !isWin,
+  });
+  return collect(child, isWin, timeoutMs);
+}
+
+function collect(child: ReturnType<typeof spawn>, isWin: boolean, timeoutMs: number): Promise<RunResult> {
+  return new Promise((resolve) => {
     let output = "";
     let bytes = 0;
     const cap = 16 * 1024 * 1024;

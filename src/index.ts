@@ -36,6 +36,7 @@ import { healthPlugin } from "./plugins/health/index.js";
 import { importMapPlugin } from "./plugins/import-map/index.js";
 import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { lineBlamePlugin } from "./plugins/line-blame/index.js";
+import { mediaInfoPlugin } from "./plugins/media-info/index.js";
 import { markerInventoryPlugin } from "./plugins/marker-inventory/index.js";
 import { moveSymbolPlugin } from "./plugins/move-symbol/index.js";
 import { notePlugin } from "./plugins/note/index.js";
@@ -66,6 +67,7 @@ const plugins: Plugin[] = [
   readManyPlugin(),
   readAtRevPlugin(),
   viewImagePlugin(),
+  mediaInfoPlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),
