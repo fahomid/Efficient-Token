@@ -29,6 +29,7 @@ import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
+import { callSitesPlugin } from "../src/plugins/call-sites/index.js";
 import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
 import { changeCoveragePlugin } from "../src/plugins/change-coverage/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
@@ -761,6 +762,21 @@ async function main(): Promise<void> {
     const sfKind = textOf(await sf.handler({ name: "auth", path: "sf", substring: true, kind: "function" }));
     check("symbol_find kind filter", sfKind.includes("authenticate") && !sfKind.includes("class AuthService"));
     check("symbol_find no match", textOf(await sf.handler({ name: "zzznope", path: "sf" })).includes("No symbol"));
+
+    // --- call_sites plugin ----------------------------------------------
+    await ctx.fs.writeAtomic("cs/lib.ts", "export function doThing() { return 1; }\n");
+    await ctx.fs.writeAtomic("cs/use.ts", "import { doThing } from './lib';\nfunction run() {\n  const f: typeof doThing = doThing;\n  return doThing();\n}\n// doThing in a comment\n");
+    await ctx.fs.writeAtomic("cs/m2.ts", "class S { greet() { return 'hi'; } }\nconst s = new S();\ns.greet();\n");
+    const callsPl = callSitesPlugin();
+    await callsPl.init?.(ctx);
+    const calls = tool(callsPl, "call_sites");
+    const callsRes = textOf(await calls.handler({ symbol: "doThing", path: "cs" }));
+    check("call_sites finds the call, not import/type/comment/value-ref",
+      callsRes.includes("cs/use.ts:4") && callsRes.includes("run") && !callsRes.includes("use.ts:1") && !callsRes.includes("use.ts:3") && !callsRes.includes("use.ts:6"));
+    check("call_sites finds a method call via member access", textOf(await calls.handler({ symbol: "greet", path: "cs" })).includes("cs/m2.ts:3"));
+    check("call_sites reports none cleanly", textOf(await calls.handler({ symbol: "zzzNope", path: "cs" })).includes("No call sites"));
+    await ctx.fs.writeAtomic("csj/data.json", '{"a":1}\n');
+    check("call_sites notes unsupported language", textOf(await calls.handler({ symbol: "x", path: "csj" })).includes("No call-site analysis"));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");

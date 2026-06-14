@@ -219,6 +219,31 @@ const DECL_WRAPPERS: ReadonlySet<string> = new Set([
   "declaration",
 ]);
 
+/** Identifier-like node types whose text is a callable name. */
+const IDENT_TYPES: ReadonlySet<string> = new Set([
+  "identifier", "field_identifier", "property_identifier", "type_identifier",
+  "shorthand_property_identifier", "name", "simple_identifier",
+]);
+
+/**
+ * Per-grammar call/invocation node types and the field naming the callee, for
+ * `findCallLines`. Curated for the common languages; a grammar absent here
+ * parses but reports no call sites (callers degrade honestly). The callee falls
+ * back to the first named child when the field is absent.
+ */
+const CALL_SPECS: Readonly<Record<string, ReadonlyArray<{ type: string; field?: string }>>> = {
+  typescript: [{ type: "call_expression", field: "function" }, { type: "new_expression", field: "constructor" }],
+  tsx: [{ type: "call_expression", field: "function" }, { type: "new_expression", field: "constructor" }],
+  javascript: [{ type: "call_expression", field: "function" }, { type: "new_expression", field: "constructor" }],
+  python: [{ type: "call", field: "function" }],
+  go: [{ type: "call_expression", field: "function" }],
+  rust: [{ type: "call_expression", field: "function" }, { type: "macro_invocation", field: "macro" }],
+  java: [{ type: "method_invocation", field: "name" }, { type: "object_creation_expression", field: "type" }],
+  c: [{ type: "call_expression", field: "function" }],
+  cpp: [{ type: "call_expression", field: "function" }],
+  ruby: [{ type: "call", field: "method" }, { type: "method_call", field: "method" }],
+};
+
 /**
  * Tree-sitter (via WASM) outline + symbol slicing. Grammars load lazily and are
  * cached; extracted outlines are memoized in a small LRU so a file parsed once
@@ -302,6 +327,61 @@ export class AstService {
     const all = await this.outline(filePath, code);
     if (all === undefined) return undefined;
     return all.filter((s) => s.name === name);
+  }
+
+  /**
+   * 1-based line numbers where `calleeName` is the CALLEE of a call/invocation
+   * (AST-precise — not text matches; excludes imports, types, comments).
+   * @returns `undefined` if the file type has no grammar OR no call mapping
+   * (so callers can degrade honestly); `[]` if mapped but no calls match.
+   */
+  async findCallLines(filePath: string, code: string, calleeName: string): Promise<number[] | undefined> {
+    const id = this.grammarIdFor(filePath);
+    if (id === undefined) return undefined;
+    const specs = CALL_SPECS[id];
+    if (specs === undefined) return undefined; // grammar parses, but calls aren't mapped
+    const result = await this.run(filePath, code, (root) => {
+      const lines = new Set<number>();
+      this.walkCalls(root, specs, calleeName, lines, 0);
+      return [...lines].sort((a, b) => a - b);
+    });
+    return result;
+  }
+
+  private walkCalls(
+    node: Node,
+    specs: ReadonlyArray<{ type: string; field?: string }>,
+    target: string,
+    out: Set<number>,
+    depth: number,
+  ): void {
+    if (depth > 4000 || out.size > 5000) return;
+    for (let i = 0; i < node.namedChildCount; i++) {
+      const child = node.namedChild(i);
+      if (!child) continue;
+      const spec = specs.find((s) => s.type === child.type);
+      if (spec) {
+        const callee = (spec.field ? child.childForFieldName(spec.field) : null) ?? child.namedChild(0);
+        const name = callee ? this.calleeName(callee) : undefined;
+        if (name === target && callee) out.add(callee.startPosition.row + 1);
+      }
+      this.walkCalls(child, specs, target, out, depth + 1);
+    }
+  }
+
+  /** The called name from a callee node: a bare identifier, or the member/field/path tail. */
+  private calleeName(node: Node): string | undefined {
+    if (IDENT_TYPES.has(node.type)) return node.text;
+    for (const f of ["property", "field", "name", "attribute"]) {
+      const c = node.childForFieldName(f);
+      if (c && IDENT_TYPES.has(c.type)) return c.text;
+    }
+    let last: Node | undefined;
+    for (let i = 0; i < node.namedChildCount; i++) {
+      const c = node.namedChild(i);
+      if (c && IDENT_TYPES.has(c.type)) last = c;
+    }
+    return last?.text;
   }
 
   /**
