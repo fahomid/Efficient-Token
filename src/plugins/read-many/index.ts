@@ -70,7 +70,7 @@ export function readManyPlugin(): Plugin {
                 endLine: t.endLine === undefined ? undefined : Number(t.endLine),
                 maxTokens: perTarget,
               });
-              const text = r.content.map((c) => c.text).join("\n");
+              const text = r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
               const block = `### ${describe(t)}${r.isError ? " (error)" : ""}\n${text}`;
               const room = budgetChars - used - 2;
               if (block.length > room) {

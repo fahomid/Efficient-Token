@@ -69,6 +69,46 @@ export class SafeFs {
   }
 
   /**
+   * Read a file's raw BYTES, sandbox + realpath checked. `maxBytes` caps the
+   * read: the whole file if `<= maxBytes`, else throws (callers degrade rather
+   * than emit a huge blob). Bypasses the UTF-8/text size limit — for images and
+   * other binary assets. Returns `{ abs, bytes }`.
+   */
+  async readBytes(p: string, maxBytes: number): Promise<{ abs: string; bytes: Buffer }> {
+    const abs = this.paths.resolve(p);
+    const st = await fsp.stat(abs);
+    if (!st.isFile()) throw new Error(`not a regular file: ${this.paths.relative(abs)}`);
+    if (st.size > maxBytes) {
+      throw new Error(`file too large: ${st.size} bytes exceeds limit ${maxBytes} (${this.paths.relative(abs)})`);
+    }
+    const real = await fsp.realpath(abs);
+    this.paths.assertContained(real, this.paths.relative(abs));
+    return { abs, bytes: await fsp.readFile(abs) };
+  }
+
+  /**
+   * Read just the first `n` bytes of a file (sandbox + realpath checked), for
+   * cheap header inspection of large binaries (image dimensions, font tables)
+   * without loading the whole asset. Returns fewer bytes for short files.
+   */
+  async readHeadBytes(p: string, n: number): Promise<{ abs: string; bytes: Buffer; size: number }> {
+    const abs = this.paths.resolve(p);
+    const st = await fsp.stat(abs);
+    if (!st.isFile()) throw new Error(`not a regular file: ${this.paths.relative(abs)}`);
+    const real = await fsp.realpath(abs);
+    this.paths.assertContained(real, this.paths.relative(abs));
+    const fh = await fsp.open(abs, "r");
+    try {
+      const len = Math.min(n, st.size);
+      const buf = Buffer.alloc(len);
+      await fh.read(buf, 0, len, 0);
+      return { abs, bytes: buf, size: st.size };
+    } finally {
+      await fh.close();
+    }
+  }
+
+  /**
    * Atomically write text: write a temp file in the SAME directory, then rename.
    * Same-dir temp keeps the rename on one filesystem so it is truly atomic.
    *

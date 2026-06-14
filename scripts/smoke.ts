@@ -59,6 +59,7 @@ import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
 import { testRunPlugin } from "../src/plugins/test-run/index.js";
 import { traceLocatePlugin } from "../src/plugins/trace-locate/index.js";
+import { viewImagePlugin } from "../src/plugins/view-image/index.js";
 import { typeClosurePlugin } from "../src/plugins/type-closure/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
@@ -110,7 +111,7 @@ function tool(plugin: Plugin, name: string) {
 }
 
 function textOf(res: ToolResult): string {
-  return res.content.map((c) => c.text).join("\n");
+  return res.content.map((c) => (c.type === "text" ? c.text : `[image ${c.mimeType}]`)).join("\n");
 }
 
 async function main(): Promise<void> {
@@ -723,6 +724,22 @@ async function main(): Promise<void> {
       } else if (c >= 0xdc00 && c <= 0xdfff) { loneSurrogate = true; break; }
     }
     check("json_query render is surrogate-safe", jqEmoji.includes("truncated") && !loneSurrogate);
+
+    // --- view_image plugin ----------------------------------------------
+    const viPlugin = viewImagePlugin();
+    await viPlugin.init?.(ctx);
+    const vi = tool(viPlugin, "view_image");
+    await fsp.mkdir(path.join(root, "img"), { recursive: true });
+    const PNG_1x1 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+    await fsp.writeFile(path.join(root, "img/pixel.png"), PNG_1x1);
+    await fsp.writeFile(path.join(root, "img/icon.svg"), '<svg viewBox="0 0 10 10"></svg>\n');
+    const viRes = await vi.handler({ paths: ["img/pixel.png"] });
+    check("view_image returns an image block", !viRes.isError && viRes.content.some((c) => c.type === "image" && c.mimeType === "image/png" && c.data.length > 0));
+    check("view_image refuses oversized images", (await vi.handler({ paths: ["img/pixel.png"], maxBytes: 1 })).isError === true);
+    const viMix = await vi.handler({ paths: ["img/pixel.png", "img/icon.svg"] });
+    const viMixNote = viMix.content.find((c) => c.type === "text");
+    check("view_image skips non-raster (svg) but keeps the raster", viMix.content.filter((c) => c.type === "image").length === 1 && !!viMixNote && viMixNote.type === "text" && viMixNote.text.includes("svg"));
+    check("view_image all-unsupported is an error", (await vi.handler({ paths: ["img/icon.svg"] })).isError === true);
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

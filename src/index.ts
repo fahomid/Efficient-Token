@@ -49,6 +49,7 @@ import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "./plugins/symbol-history/index.js";
 import { testRunPlugin } from "./plugins/test-run/index.js";
+import { viewImagePlugin } from "./plugins/view-image/index.js";
 import { traceLocatePlugin } from "./plugins/trace-locate/index.js";
 import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 
@@ -64,6 +65,7 @@ const plugins: Plugin[] = [
   codeReadPlugin(),
   readManyPlugin(),
   readAtRevPlugin(),
+  viewImagePlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),

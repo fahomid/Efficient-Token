@@ -17,9 +17,14 @@ import type { Scanner } from "../services/scan.js";
 
 export type Tier = "free" | "premium";
 
+/** A single content block a tool can return: distilled text, or a real image. */
+export type ToolContent =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string }; // data = base64
+
 /** The uniform envelope every tool returns. */
 export interface ToolResult {
-  content: Array<{ type: "text"; text: string }>;
+  content: ToolContent[];
   isError?: boolean;
 }
 
