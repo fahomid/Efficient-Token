@@ -32,6 +32,7 @@ import { designTokensPlugin } from "./plugins/design-tokens/index.js";
 import { conflictDigestPlugin } from "./plugins/conflict-digest/index.js";
 import { diffDigestPlugin } from "./plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "./plugins/find-references/index.js";
+import { fontInfoPlugin } from "./plugins/font-info/index.js";
 import { globPlugin } from "./plugins/glob/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
@@ -74,6 +75,7 @@ const plugins: Plugin[] = [
   designTokensPlugin(),
   colorContrastPlugin(),
   svgDigestPlugin(),
+  fontInfoPlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),

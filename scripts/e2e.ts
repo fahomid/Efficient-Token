@@ -75,14 +75,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the forty-three free tools",
-      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,color_contrast,commit_log,conflict_digest,design_tokens,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,media_info,move_symbol,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,svg_digest,symbol_find,symbol_history,test_run,trace_locate,type_closure,view_image",
+      "tools/list returns the forty-four free tools",
+      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,color_contrast,commit_log,conflict_digest,design_tokens,diff_digest,find_references,font_info,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,media_info,move_symbol,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,svg_digest,symbol_find,symbol_history,test_run,trace_locate,type_closure,view_image",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory", "trace_locate", "import_map", "type_closure", "call_hierarchy", "outline_diff", "view_image", "media_info", "design_tokens", "color_contrast", "svg_digest"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev", "symbol_history", "conflict_digest", "change_coverage", "call_sites", "commit_log", "line_blame", "marker_inventory", "trace_locate", "import_map", "type_closure", "call_hierarchy", "outline_diff", "view_image", "media_info", "design_tokens", "color_contrast", "svg_digest", "font_info"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -294,6 +294,10 @@ async function main(): Promise<void> {
     await client.callTool({ name: "code_write", arguments: { path: "logo.svg", content: '<svg viewBox="0 0 16 16"><path d="M1 1"/></svg>\n' } });
     const svgd = await client.callTool({ name: "svg_digest", arguments: { path: "logo.svg" } });
     check("svg_digest over the wire", !svgd.isError && resultText(svgd).includes("viewBox: 0 0 16 16") && resultText(svgd).includes("path×1"));
+
+    await client.callTool({ name: "code_write", arguments: { path: "fonts.css", content: "@font-face { font-family: 'Roboto'; font-weight: 700; }\n" } });
+    const finfo = await client.callTool({ name: "font_info", arguments: { paths: ["fonts.css"] } });
+    check("font_info over the wire", !finfo.isError && resultText(finfo).includes('family "Roboto"') && resultText(finfo).includes("weight 700"));
 
     const escaped = await client.callTool({
       name: "code_read",

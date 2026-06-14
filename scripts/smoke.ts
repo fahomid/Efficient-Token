@@ -41,6 +41,7 @@ import { conflictDigestPlugin } from "../src/plugins/conflict-digest/index.js";
 import { designTokensPlugin } from "../src/plugins/design-tokens/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
+import { fontInfoPlugin } from "../src/plugins/font-info/index.js";
 import { globPlugin } from "../src/plugins/glob/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
@@ -788,6 +789,36 @@ async function main(): Promise<void> {
     check("svg_digest reports structure without dumping markup",
       svgRes.includes("viewBox: 0 0 24 24") && svgRes.includes("path×2") && svgRes.includes("ids (3)") && svgRes.includes("grad1") && !svgRes.includes("M0 0L10 10"));
     check("svg_digest rejects non-svg", (await svg.handler({ path: "sample.ts" })).isError === true);
+
+    // --- font_info plugin -----------------------------------------------
+    const fontPlugin = fontInfoPlugin();
+    await fontPlugin.init?.(ctx);
+    const fi = tool(fontPlugin, "font_info");
+    const enc16 = (s: string): Buffer => {
+      const b = Buffer.alloc(s.length * 2);
+      for (let i = 0; i < s.length; i++) b.writeUInt16BE(s.charCodeAt(i), i * 2);
+      return b;
+    };
+    const nb = enc16("Inter");
+    const nameTable = Buffer.concat([
+      Buffer.from([0, 0, 0, 1, 0, 18]), // format 0, count 1, stringOffset 18
+      Buffer.from([0, 3, 0, 1, 0x04, 0x09, 0, 1, (nb.length >> 8) & 0xff, nb.length & 0xff, 0, 0]), // platform3/enc1/lang/nameID1/len/off0
+      nb,
+    ]);
+    const fhdr = Buffer.alloc(12);
+    fhdr.writeUInt32BE(0x00010000, 0);
+    fhdr.writeUInt16BE(1, 4);
+    const fdir = Buffer.alloc(16);
+    fdir.write("name", 0, "ascii");
+    fdir.writeUInt32BE(28, 8);
+    fdir.writeUInt32BE(nameTable.length, 12);
+    await fsp.mkdir(path.join(root, "fonts"), { recursive: true });
+    await fsp.writeFile(path.join(root, "fonts/Inter.ttf"), Buffer.concat([fhdr, fdir, nameTable]));
+    check("font_info reads TTF family from the name table", textOf(await fi.handler({ paths: ["fonts/Inter.ttf"] })).includes('family "Inter"'));
+    await ctx.fs.writeAtomic("fonts/faces.css", "@font-face {\n  font-family: 'Inter';\n  font-weight: 400;\n  font-style: normal;\n  src: url('Inter.woff2') format('woff2');\n}\n");
+    const fiCss = textOf(await fi.handler({ paths: ["fonts/faces.css"] }));
+    check("font_info extracts @font-face", fiCss.includes('family "Inter"') && fiCss.includes("weight 400"));
+    check("font_info notes woff2 binary", textOf(await fi.handler({ paths: ["fonts/Inter.woff2"] })).includes("woff2"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
