@@ -5,9 +5,13 @@
  *
  * Run: `npm run smoke`  (tsx scripts/smoke.ts)
  */
+import { execFile } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
 
 import { loadConfig } from "../src/core/config.js";
 import type { CoreContext, Plugin, ToolResult } from "../src/core/contract.js";
@@ -24,6 +28,7 @@ import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
 import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
+import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
@@ -450,6 +455,49 @@ async function main(): Promise<void> {
 
     const m2 = await rm.handler({ path: "rmap", maxTokens: 1 });
     check("repo_map respects token budget", textOf(m2).includes("truncated"));
+
+    // --- diff_digest plugin ---------------------------------------------
+    // Non-repo: the smoke root is not a git repo.
+    const ddNonRepo = diffDigestPlugin();
+    await ddNonRepo.init?.(ctx);
+    check("diff_digest detects non-repo", (await tool(ddNonRepo, "diff_digest").handler({})).isError === true);
+
+    // Real (isolated) git repo: exercise the success paths.
+    const gitRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-git-"));
+    try {
+      const g = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: gitRoot });
+      await g(["init", "-q"]);
+      await g(["config", "user.email", "t@example.com"]);
+      await g(["config", "user.name", "Test"]);
+      await g(["config", "commit.gpgsign", "false"]);
+      await fsp.writeFile(path.join(gitRoot, "f.ts"), "export const a = 1;\n");
+      await g(["add", "f.ts"]);
+      await g(["commit", "-q", "-m", "init"]);
+      await fsp.writeFile(path.join(gitRoot, "f.ts"), "export const a = 2;\nexport const b = 3;\n");
+
+      const gPaths = new PathSandbox(gitRoot);
+      const gctx: CoreContext = {
+        ...ctx,
+        config: { ...config, root: gitRoot },
+        paths: gPaths,
+        fs: new SafeFs(gPaths, config.maxFileBytes),
+        scan: new Scanner(gPaths),
+      };
+      const gdd = diffDigestPlugin();
+      await gdd.init?.(gctx);
+      const dd = tool(gdd, "diff_digest");
+
+      const digestT = textOf(await dd.handler({}));
+      check("diff_digest shows changed hunks", digestT.includes("+export const a = 2;") && digestT.includes("+export const b = 3;") && digestT.includes("f.ts"));
+      check("diff_digest stat mode", textOf(await dd.handler({ outputMode: "stat" })).includes("f.ts") && textOf(await dd.handler({ outputMode: "stat" })).includes("|"));
+      check("diff_digest files mode", /^M\s+f\.ts/m.test(textOf(await dd.handler({ outputMode: "files" }))));
+      check("diff_digest invalid ref rejected", (await dd.handler({ ref: "--evil" })).isError === true);
+
+      await g(["add", "f.ts"]);
+      check("diff_digest staged mode", textOf(await dd.handler({ staged: true })).includes("+export const b = 3;"));
+    } finally {
+      await fsp.rm(gitRoot, { recursive: true, force: true });
+    }
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

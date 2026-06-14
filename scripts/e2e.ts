@@ -67,14 +67,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the eight free tools",
-      names.join(",") === "code_edit,code_outline,code_read,code_search,code_write,find_references,health,repo_map",
+      "tools/list returns the nine free tools",
+      names.join(",") === "code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,health,repo_map",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -138,6 +138,11 @@ async function main(): Promise<void> {
     const map = await client.callTool({ name: "repo_map", arguments: {} });
     const mapTxt = resultText(map);
     check("repo_map over the wire", !map.isError && mapTxt.includes("repo map —") && mapTxt.includes("sample.ts"));
+
+    // The e2e workspace is a temp dir (not a git repo) — diff_digest must
+    // respond gracefully over the wire rather than crash.
+    const dd = await client.callTool({ name: "diff_digest", arguments: {} });
+    check("diff_digest responds gracefully (non-repo) over the wire", dd.isError === true && resultText(dd).includes("not a git repository"));
 
     const escaped = await client.callTool({
       name: "code_read",

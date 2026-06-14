@@ -56,6 +56,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `code_search` | Regex search across the workspace (Claude `Grep`/ripgrep): `files_with_matches` (default), `content` (matching lines), or `count`; `glob`/`type` filters, context lines, case-insensitive, multiline. Returns matches — not whole files. *(read-only)* |
 | `find_references` | Locate where a symbol is **defined** (AST-precise: kind + line + signature) and **used** (identifier-boundary scan) across the workspace, as `file:line` locations. *(read-only)* |
 | `repo_map` | A token-bounded **table of contents**: the file tree grouped by directory, with each source file's top-level symbols (classes/functions/types). Orient in a codebase without reading files. *(read-only)* |
+| `diff_digest` | Review git changes as **hunks only** (or a `--stat` summary / file list) — `ref`/`staged`/`path` scoped — instead of reading whole changed files. Read-only git. *(read-only)* |
 | `code_edit` | Exact find-and-replace in a file (Claude `Edit` semantics): `oldString` must match **verbatim** and be **unique** unless `replaceAll=true`; refuses missing/ambiguous matches; atomic write. *(mutating)* |
 | `code_write` | Create or fully overwrite a file (Claude `Write` semantics); creates parent dirs; atomic write. *(mutating)* |
 

@@ -19,6 +19,7 @@ import { codeOutlinePlugin } from "./plugins/code-outline/index.js";
 import { codeReadPlugin } from "./plugins/code-read/index.js";
 import { codeSearchPlugin } from "./plugins/code-search/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
+import { diffDigestPlugin } from "./plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "./plugins/find-references/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
@@ -36,6 +37,7 @@ const plugins: Plugin[] = [
   codeSearchPlugin(),
   findReferencesPlugin(),
   repoMapPlugin(),
+  diffDigestPlugin(),
   codeEditPlugin(),
   codeWritePlugin(),
 ];
