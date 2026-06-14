@@ -63,6 +63,7 @@ import { svgDigestPlugin } from "../src/plugins/svg-digest/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
 import { testRunPlugin } from "../src/plugins/test-run/index.js";
+import { tokenUsagePlugin } from "../src/plugins/token-usage/index.js";
 import { traceLocatePlugin } from "../src/plugins/trace-locate/index.js";
 import { viewImagePlugin } from "../src/plugins/view-image/index.js";
 import { typeClosurePlugin } from "../src/plugins/type-closure/index.js";
@@ -819,6 +820,17 @@ async function main(): Promise<void> {
     const fiCss = textOf(await fi.handler({ paths: ["fonts/faces.css"] }));
     check("font_info extracts @font-face", fiCss.includes('family "Inter"') && fiCss.includes("weight 400"));
     check("font_info notes woff2 binary", textOf(await fi.handler({ paths: ["fonts/Inter.woff2"] })).includes("woff2"));
+
+    // --- token_usage plugin ---------------------------------------------
+    await ctx.fs.writeAtomic("tu/style.css", ":root {\n  --used: #fff;\n  --unused: 4px;\n}\n.a {\n  color: var(--used);\n  background: var(--missing);\n}\n");
+    const tuPlugin = tokenUsagePlugin();
+    await tuPlugin.init?.(ctx);
+    const tu = tool(tuPlugin, "token_usage");
+    const tuRes = textOf(await tu.handler({ paths: ["tu/style.css"] }));
+    check("token_usage finds unused + undefined custom properties",
+      tuRes.includes("defined but unused (1)") && tuRes.includes("--unused") && tuRes.includes("used but undefined (1)") && tuRes.includes("--missing"));
+    await ctx.fs.writeAtomic("tu/clean.css", ":root { --c: red; }\n.b { color: var(--c); }\n");
+    check("token_usage clean report", textOf(await tu.handler({ paths: ["tu/clean.css"] })).includes("every defined custom property is referenced"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
