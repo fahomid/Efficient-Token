@@ -41,6 +41,7 @@ import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
+import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
 export class Greeter {
@@ -631,6 +632,20 @@ async function main(): Promise<void> {
     check("grep_context excludes unrelated symbols", !g1t.includes("Svc.stop"));
     check("grep_context no match", textOf(await gc.handler({ pattern: "zzznope", path: "gc" })).includes("No matches"));
     check("grep_context invalid regex", (await gc.handler({ pattern: "(", path: "gc" })).isError === true);
+
+    // --- symbol_find plugin ---------------------------------------------
+    await ctx.fs.writeAtomic("sf/auth.ts", "export class AuthService {\n  login() {}\n  logout() {}\n}\nexport function authenticate() {}\nexport const helper = () => 0;\n");
+    const sfPlugin = symbolFindPlugin();
+    await sfPlugin.init?.(ctx);
+    const sf = tool(sfPlugin, "symbol_find");
+    const sfExact = await sf.handler({ name: "AuthService", path: "sf" });
+    check("symbol_find exact match", !sfExact.isError && textOf(sfExact).includes("sf/auth.ts:1") && textOf(sfExact).includes("class AuthService"));
+    const sfSub = textOf(await sf.handler({ name: "auth", path: "sf", substring: true, caseInsensitive: true }));
+    check("symbol_find substring match", sfSub.includes("AuthService") && sfSub.includes("authenticate") && !sfSub.includes("helper"));
+    check("symbol_find exact excludes substrings", textOf(await sf.handler({ name: "auth", path: "sf" })).includes("No symbol"));
+    const sfKind = textOf(await sf.handler({ name: "auth", path: "sf", substring: true, kind: "function" }));
+    check("symbol_find kind filter", sfKind.includes("authenticate") && !sfKind.includes("class AuthService"));
+    check("symbol_find no match", textOf(await sf.handler({ name: "zzznope", path: "sf" })).includes("No symbol"));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");

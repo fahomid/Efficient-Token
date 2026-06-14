@@ -32,6 +32,7 @@ import { notePlugin } from "./plugins/note/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
+import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
 
 const VERSION = "0.1.0";
 
@@ -47,6 +48,7 @@ const plugins: Plugin[] = [
   codeSearchPlugin(),
   grepContextPlugin(),
   findReferencesPlugin(),
+  symbolFindPlugin(),
   codeContextPlugin(),
   repoMapPlugin(),
   diffDigestPlugin(),

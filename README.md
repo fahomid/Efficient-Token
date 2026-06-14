@@ -56,6 +56,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `glob` | List file **paths** matching a glob/type (no content), like Claude's `Glob` — find files without reading directories. *(read-only)* |
 | `code_search` | Regex search across the workspace (Claude `Grep`/ripgrep): `files_with_matches` (default), `content` (matching lines), or `count`; `glob`/`type` filters, context lines, case-insensitive, multiline. Returns matches — not whole files. *(read-only)* |
 | `find_references` | Locate where a symbol is **defined** (AST-precise: kind + line + signature) and **used** (identifier-boundary scan) across the workspace, as `file:line` locations. *(read-only)* |
+| `symbol_find` | Find where symbols are **defined** by name — exact or `substring` (fuzzy recall) — returning `file:line` + kind + signature; optional `kind` filter. *(read-only)* |
 | `grep_context` | Regex search that returns each match **with its enclosing function/class source** (deduped, line-numbered, matched lines marked `›`) — one call instead of search → open-each-file. *(read-only)* |
 | `code_context` | One-shot **task primer** for a symbol: its definition source + the workspace symbols it **uses** (with signatures) + where it's **referenced** — primes a task without chasing dependencies. *(read-only)* |
 | `repo_map` | A token-bounded **table of contents**: the file tree grouped by directory, with each source file's top-level symbols (classes/functions/types). Orient in a codebase without reading files. *(read-only)* |
