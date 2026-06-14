@@ -30,6 +30,7 @@ import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
 import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
+import { changeCoveragePlugin } from "../src/plugins/change-coverage/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
 import { conflictDigestPlugin } from "../src/plugins/conflict-digest/index.js";
@@ -873,6 +874,20 @@ async function main(): Promise<void> {
       check("symbol_history range mode works", !(await sh.handler({ path: "mod.ts", startLine: 1, endLine: 3 })).isError);
       check("symbol_history invalid ref rejected", (await sh.handler({ path: "mod.ts", symbol: "alpha", ref: "--evil" })).isError === true);
       check("symbol_history unknown symbol errors", (await sh.handler({ path: "mod.ts", symbol: "zzz" })).isError === true);
+
+      // change_coverage: intersect changed lines with an lcov artifact
+      await fsp.writeFile(path.join(gitRoot, "cov.ts"), "export function covered() {\n  return 1;\n}\nexport function uncovered() {\n  return 2;\n}\n");
+      await g(["add", "cov.ts"]);
+      await g(["commit", "-q", "-m", "add cov"]);
+      await fsp.writeFile(path.join(gitRoot, "cov.ts"), "export function covered() {\n  return 11;\n}\nexport function uncovered() {\n  return 22;\n}\n");
+      await fsp.mkdir(path.join(gitRoot, "coverage"), { recursive: true });
+      await fsp.writeFile(path.join(gitRoot, "coverage", "lcov.info"), "SF:cov.ts\nDA:2,3\nDA:5,0\nend_of_record\n");
+      const chgCovPlugin = changeCoveragePlugin();
+      await chgCovPlugin.init?.(gctx);
+      const chc = tool(chgCovPlugin, "change_coverage");
+      const chcT = textOf(await chc.handler({}));
+      check("change_coverage flags covered vs uncovered changed lines", chcT.includes("cov.ts:5") && chcT.includes("uncovered") && chcT.includes("1/2") && chcT.includes("function uncovered"));
+      check("change_coverage missing artifact errors", (await chc.handler({ artifact: "nope/lcov.info" })).isError === true);
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
+import { enclosingSymbol, parseChangedRanges } from "../../core/diff.js";
 import { gitOk, isSafeRef, runGit } from "../../core/git.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import type { SymbolInfo } from "../../services/ast.js";
@@ -62,7 +63,7 @@ export function reviewBranchPlugin(): Plugin {
             if (numstat.length === 0) {
               return ok(`No ${staged ? "staged " : ""}changes${ref ? ` vs ${ref}` : ""}.`);
             }
-            const ranges = parseRanges(await runGit(root, [...base, "--unified=0", ...tail, ...pathArgs]));
+            const ranges = parseChangedRanges(await runGit(root, [...base, "--unified=0", ...tail, ...pathArgs]));
 
             const budget = maxTokens * 4;
             const sections: string[] = [];
@@ -133,47 +134,16 @@ function parseNumstat(s: string): NumstatEntry[] {
   return out;
 }
 
-/** Map each changed file to its NEW-side changed line ranges (from `-U0`). */
-function parseRanges(diff: string): Map<string, Array<[number, number]>> {
-  const map = new Map<string, Array<[number, number]>>();
-  let cur: string | null = null;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("+++ ")) {
-      const p = line.slice(4).trim();
-      cur = p === "/dev/null" ? null : p.startsWith("b/") ? p.slice(2) : p;
-      if (cur && !map.has(cur)) map.set(cur, []);
-    } else if (cur && line.startsWith("@@")) {
-      const m = /\+(\d+)(?:,(\d+))?/.exec(line);
-      if (m) {
-        const c = Number(m[1]);
-        const d = m[2] === undefined ? 1 : Number(m[2]);
-        if (d > 0) map.get(cur)!.push([c, c + d - 1]);
-      }
-    }
-  }
-  return map;
-}
-
 function changedSymbols(outline: SymbolInfo[], ranges: Array<[number, number]>): SymbolInfo[] {
   const set = new Map<string, SymbolInfo>();
   let budget = MAX_CHANGED_LINES;
   for (const [c, e] of ranges) {
     for (let L = c; L <= e && budget > 0; L++, budget--) {
-      const s = enclosing(outline, L);
+      const s = enclosingSymbol(outline, L);
       if (s) set.set(`${s.startLine}:${s.name}`, s);
     }
   }
   return [...set.values()].sort((a, b) => a.startLine - b.startLine);
-}
-
-function enclosing(outline: SymbolInfo[], lineNo: number): SymbolInfo | undefined {
-  let best: SymbolInfo | undefined;
-  for (const s of outline) {
-    if (s.startLine <= lineNo && lineNo <= s.endLine) {
-      if (!best || s.startLine > best.startLine) best = s;
-    }
-  }
-  return best;
 }
 
 async function readText(ctx: CoreContext, rel: string): Promise<string | undefined> {
