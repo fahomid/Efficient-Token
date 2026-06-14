@@ -39,6 +39,7 @@ import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
+import { readManyPlugin } from "../src/plugins/read-many/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
@@ -597,6 +598,27 @@ async function main(): Promise<void> {
     check("glob type filter excludes others", !textOf(await gl.handler({ type: "ts", path: "srch" })).includes(".txt"));
     check("glob no match", textOf(await gl.handler({ pattern: "*.zzz", path: "srch" })).includes("No files"));
     check("glob headLimit caps output", textOf(await gl.handler({ path: "srch", headLimit: 1 })).includes("1+ file(s)"));
+
+    // --- read_many plugin -----------------------------------------------
+    const rmManyPlugin = readManyPlugin();
+    await rmManyPlugin.init?.(ctx);
+    const rmm = tool(rmManyPlugin, "read_many");
+    const many = await rmm.handler({ reads: [
+      { path: "sample.ts", symbol: "add" },
+      { path: "sample.ts", startLine: 1, endLine: 1 },
+      { path: "srch/a.ts" },
+    ] });
+    const manyT = textOf(many);
+    check("read_many batches symbol + range + whole", !many.isError
+      && manyT.includes("### sample.ts symbol=add") && manyT.includes("return a + b;")
+      && manyT.includes("### sample.ts:1-1")
+      && manyT.includes("### srch/a.ts") && manyT.includes("alpha"));
+    const mixed = await rmm.handler({ reads: [
+      { path: "sample.ts", symbol: "add" },
+      { path: "does/not/exist.ts" },
+    ] });
+    const mixedT = textOf(mixed);
+    check("read_many handles a bad target gracefully", !mixed.isError && mixedT.includes("return a + b;") && mixedT.includes("(error)"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

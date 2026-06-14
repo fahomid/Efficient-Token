@@ -30,6 +30,7 @@ import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { notePlugin } from "./plugins/note/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
+import { readManyPlugin } from "./plugins/read-many/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
@@ -44,6 +45,7 @@ const plugins: Plugin[] = [
   healthPlugin(),
   codeOutlinePlugin(),
   codeReadPlugin(),
+  readManyPlugin(),
   globPlugin(),
   codeSearchPlugin(),
   grepContextPlugin(),

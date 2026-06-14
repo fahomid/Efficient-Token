@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the twenty free tools",
-      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,note_read,note_write,project_rename,repo_map,review_branch,symbol_find",
+      "tools/list returns the twenty-one free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,note_read,note_write,project_rename,read_many,repo_map,review_branch,symbol_find",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -173,6 +173,10 @@ async function main(): Promise<void> {
 
     const symFound = await client.callTool({ name: "symbol_find", arguments: { name: "Greeter" } });
     check("symbol_find over the wire", !symFound.isError && resultText(symFound).includes("sample.ts:") && resultText(symFound).includes("class Greeter"));
+
+    const readMany = await client.callTool({ name: "read_many", arguments: { reads: [{ path: "sample.ts", symbol: "add" }, { path: "sample.ts", symbol: "Greeter" }] } });
+    const rmt = resultText(readMany);
+    check("read_many over the wire", !readMany.isError && rmt.includes("symbol=add") && rmt.includes("function add") && rmt.includes("symbol=Greeter") && rmt.includes("class Greeter"));
 
     const cctx = await client.callTool({ name: "code_context", arguments: { symbol: "add" } });
     check("code_context over the wire", !cctx.isError && resultText(cctx).includes("code_context: add") && resultText(cctx).includes("Definition — function add"));
