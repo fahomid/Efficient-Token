@@ -28,6 +28,7 @@ import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
 import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
+import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
@@ -424,6 +425,48 @@ async function main(): Promise<void> {
     await tinyWrite.init?.(tinyCtx);
     const oversize = await tool(tinyWrite, "code_write").handler({ path: "syn/big.ts", content: "export function big( {\n  still broken\n" });
     check("code_write skips guard when existing baseline is unreadable", !oversize.isError);
+
+    // --- apply_patch plugin (atomic multi-edit) -------------------------
+    const apPlugin = applyPatchPlugin();
+    await apPlugin.init?.(ctx);
+    const ap = tool(apPlugin, "apply_patch");
+
+    await ctx.fs.writeAtomic("ap/a.ts", "export const a = 1;\nexport const b = 2;\n");
+    await ctx.fs.writeAtomic("ap/b.ts", "export const c = 3;\n");
+    const ap1 = await ap.handler({ edits: [
+      { path: "ap/a.ts", oldString: "a = 1", newString: "a = 10" },
+      { path: "ap/a.ts", oldString: "b = 2", newString: "b = 20" },
+      { path: "ap/b.ts", oldString: "c = 3", newString: "c = 30" },
+    ] });
+    check("apply_patch applies across files", !ap1.isError && (await ctx.fs.read("ap/a.ts")).content === "export const a = 10;\nexport const b = 20;\n" && (await ctx.fs.read("ap/b.ts")).content === "export const c = 30;\n");
+
+    await ctx.fs.writeAtomic("ap/seq.ts", "let x = 0;\n");
+    const apSeq = await ap.handler({ edits: [
+      { path: "ap/seq.ts", oldString: "= 0", newString: "= 1" },
+      { path: "ap/seq.ts", oldString: "= 1", newString: "= 2" },
+    ] });
+    check("apply_patch sequential edits compound", !apSeq.isError && (await ctx.fs.read("ap/seq.ts")).content === "let x = 2;\n");
+
+    await ctx.fs.writeAtomic("ap/x.ts", "export const p = 1;\n");
+    await ctx.fs.writeAtomic("ap/y.ts", "export const q = 2;\n");
+    const apAbort = await ap.handler({ edits: [
+      { path: "ap/x.ts", oldString: "p = 1", newString: "p = 11" },
+      { path: "ap/y.ts", oldString: "NOTHERE", newString: "z" },
+    ] });
+    check("apply_patch aborts atomically on a bad edit", apAbort.isError === true && textOf(apAbort).includes("aborted") && (await ctx.fs.read("ap/x.ts")).content === "export const p = 1;\n");
+
+    await ctx.fs.writeAtomic("ap/g.ts", "export function g() {\n  return 1;\n}\n");
+    const apSyn = await ap.handler({ edits: [{ path: "ap/g.ts", oldString: "  return 1;\n}", newString: "  return 1;" }] });
+    check("apply_patch enforces syntax guard", apSyn.isError === true && (await ctx.fs.read("ap/g.ts")).content.includes("}"));
+    const apForced = await ap.handler({ validate: false, edits: [{ path: "ap/g.ts", oldString: "  return 1;\n}", newString: "  return 1;" }] });
+    check("apply_patch validate:false overrides", !apForced.isError && !(await ctx.fs.read("ap/g.ts")).content.includes("}"));
+
+    await ctx.fs.writeAtomic("ap/amb.ts", "const dup = 1; const x = dup + dup;\n");
+    const apAmb = await ap.handler({ edits: [{ path: "ap/amb.ts", oldString: "dup", newString: "D" }] });
+    check("apply_patch rejects ambiguous edit", apAmb.isError === true && textOf(apAmb).includes("not unique"));
+
+    const apEscape = await ap.handler({ edits: [{ path: "../escape.ts", oldString: "a", newString: "b" }] });
+    check("apply_patch blocks path escape", apEscape.isError === true);
 
     // --- code_search plugin (Grep semantics) ----------------------------
     await ctx.fs.writeAtomic("srch/a.ts", "export function alpha() {}\nconst beta = 1;\n");

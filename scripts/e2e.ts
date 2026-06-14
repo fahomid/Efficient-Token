@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the ten free tools",
-      names.join(",") === "code_check,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,health,repo_map",
+      "tools/list returns the eleven free tools",
+      names.join(",") === "apply_patch,code_check,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,health,repo_map",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     );
     check(
       "write tools annotated destructive (not read-only)",
-      ["code_edit", "code_write"].every(
+      ["code_edit", "code_write", "apply_patch"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === false && byName.get(n)?.annotations?.destructiveHint === true,
       ),
     );
@@ -134,6 +134,21 @@ async function main(): Promise<void> {
     check("code_edit syntax guard rejects over the wire", breakEdit.isError === true && resultText(breakEdit).includes("syntax error"));
     const stillValid = await client.callTool({ name: "code_read", arguments: { path: "gen/g.ts", symbol: "g" } });
     check("file unchanged after guarded rejection", resultText(stillValid).includes("return 1;") && resultText(stillValid).includes("}"));
+
+    // apply_patch: atomic multi-file batch over the wire
+    await client.callTool({ name: "code_write", arguments: { path: "gen/p1.ts", content: "export const one = 1;\n" } });
+    await client.callTool({ name: "code_write", arguments: { path: "gen/p2.ts", content: "export const two = 2;\n" } });
+    const patched = await client.callTool({
+      name: "apply_patch",
+      arguments: { edits: [
+        { path: "gen/p1.ts", oldString: "one = 1", newString: "one = 11" },
+        { path: "gen/p2.ts", oldString: "two = 2", newString: "two = 22" },
+      ] },
+    });
+    check("apply_patch applies a batch over the wire", !patched.isError && resultText(patched).includes("2 file(s)"));
+    const p1 = await client.callTool({ name: "code_read", arguments: { path: "gen/p1.ts" } });
+    const p2 = await client.callTool({ name: "code_read", arguments: { path: "gen/p2.ts" } });
+    check("apply_patch batch persisted both files", resultText(p1).includes("one = 11") && resultText(p2).includes("two = 22"));
     const editEscape = await client.callTool({
       name: "code_edit",
       arguments: { path: "../../../etc/hosts", oldString: "a", newString: "b" },

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
+import { applyStringEdit, editFailureMessage } from "../../core/edits.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { numberLines, splitLines } from "../../core/text.js";
 import { formatSyntaxIssues } from "../../services/ast.js";
@@ -56,35 +57,12 @@ export function codeEditPlugin(): Plugin {
             const newString = String(args.newString);
             const replaceAll = args.replaceAll === true;
 
-            if (oldString === newString) {
-              return fail("oldString and newString are identical — nothing to change.");
-            }
-
             const { content, abs } = await ctx.fs.readRaw(p);
             const rel = ctx.paths.relative(abs);
 
-            const count = countOccurrences(content, oldString);
-            if (count === 0) {
-              return fail(
-                `${rel} — oldString not found. Read the file (code_read) and copy the exact text, including whitespace.`,
-              );
-            }
-            if (count > 1 && !replaceAll) {
-              return fail(
-                `${rel} — oldString is not unique (${count} matches). Add surrounding context to disambiguate, or set replaceAll=true.`,
-              );
-            }
-
-            // Literal replacement only — never String.replace, whose replacement
-            // string interprets `$&`/`$1`/`$$` and would corrupt the output.
-            let newContent: string;
-            if (replaceAll) {
-              newContent = content.split(oldString).join(newString);
-            } else {
-              const idx = content.indexOf(oldString);
-              newContent =
-                content.slice(0, idx) + newString + content.slice(idx + oldString.length);
-            }
+            const r = applyStringEdit(content, oldString, newString, replaceAll);
+            if (!r.ok) return fail(editFailureMessage(rel, r));
+            const newContent = r.content;
 
             // Recovery guard: never persist an edit that breaks a clean file.
             if (args.validate !== false) {
@@ -99,9 +77,8 @@ export function codeEditPlugin(): Plugin {
 
             await ctx.fs.writeAtomic(p, newContent);
 
-            const n = replaceAll ? count : 1;
             const preview = changedPreview(content, newContent, oldString, newString);
-            return ok(`Edited ${rel}: ${n} replacement(s).\n${preview}`);
+            return ok(`Edited ${rel}: ${r.count} replacement(s).\n${preview}`);
           } catch (err) {
             return fail(`code_edit failed: ${errMessage(err)}`);
           }
@@ -109,17 +86,6 @@ export function codeEditPlugin(): Plugin {
       },
     ],
   };
-}
-
-/** Count non-overlapping literal occurrences of `needle` in `haystack`. */
-function countOccurrences(haystack: string, needle: string): number {
-  let n = 0;
-  let i = haystack.indexOf(needle);
-  while (i !== -1) {
-    n++;
-    i = haystack.indexOf(needle, i + needle.length);
-  }
-  return n;
 }
 
 /** Line-numbered window around the FIRST change so the model can verify it. */

@@ -18,6 +18,7 @@ import { codeEditPlugin } from "./plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "./plugins/code-outline/index.js";
 import { codeReadPlugin } from "./plugins/code-read/index.js";
 import { codeSearchPlugin } from "./plugins/code-search/index.js";
+import { applyPatchPlugin } from "./plugins/apply-patch/index.js";
 import { codeCheckPlugin } from "./plugins/code-check/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
 import { diffDigestPlugin } from "./plugins/diff-digest/index.js";
@@ -42,6 +43,7 @@ const plugins: Plugin[] = [
   codeCheckPlugin(),
   codeEditPlugin(),
   codeWritePlugin(),
+  applyPatchPlugin(),
 ];
 
 async function main(): Promise<void> {
