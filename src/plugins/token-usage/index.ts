@@ -59,7 +59,7 @@ export function tokenUsagePlugin(): Plugin {
               } catch {
                 continue;
               }
-              const lines = splitLines(content);
+              const lines = splitLines(stripCssNoise(content));
               for (let i = 0; i < lines.length; i++) {
                 collect(lines[i]!, DEF_RE, rel, i + 1, defined);
                 collect(lines[i]!, USE_RE, rel, i + 1, used);
@@ -97,6 +97,15 @@ export function tokenUsagePlugin(): Plugin {
       },
     ],
   };
+}
+
+/** Blank out CSS comment bodies and string-literal contents (keeping newlines so
+ * line numbers stay accurate), so `--x:` inside a comment/string isn't counted. */
+function stripCssNoise(s: string): string {
+  const blank = (m: string): string => m.replace(/[^\n]/g, " ");
+  return s
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g, blank);
 }
 
 function collect(line: string, re: RegExp, file: string, lineNo: number, into: Map<string, Loc>): void {

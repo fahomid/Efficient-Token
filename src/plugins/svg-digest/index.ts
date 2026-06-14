@@ -41,7 +41,11 @@ export function svgDigestPlugin(): Plugin {
             const rel = ctx.paths.relative(abs);
             if (!/<svg[\s>]/i.test(content)) return fail(`${rel} does not look like an SVG (no <svg> root).`);
 
-            const root = /<svg\b[^>]*>/i.exec(content)?.[0] ?? "";
+            // Cap the opening tag before attribute parsing: attrsOf's regex is
+            // O(n²) on a pathological all-word-char tag, and a real <svg …> tag
+            // is tiny — so bound it to a constant to stay time-bounded.
+            const rawRoot = /<svg\b[^>]*>/i.exec(content)?.[0] ?? "";
+            const root = rawRoot.length > 8192 ? rawRoot.slice(0, 8192) : rawRoot;
             const rootAttrs = attrsOf(root);
             const viewBox = rootAttrs.viewbox ?? "(none)";
             const width = rootAttrs.width ?? "(auto)";
@@ -72,10 +76,10 @@ export function svgDigestPlugin(): Plugin {
             ];
             if (ids.length > 0) parts.push(`  ids (${ids.length}${ids.length >= MAX_IDS ? "+" : ""}): ${ids.join(", ")}`);
 
-            let out = parts.join("\n");
+            const out = parts.join("\n");
             const budget = maxTokens * 4;
-            if (out.length > budget) out = `${out.slice(0, budget)}\n[truncated — raise maxTokens]`;
-            return ok(out);
+            const cps = Array.from(out); // slice on code points so truncation never splits a surrogate pair
+            return ok(cps.length > budget ? `${cps.slice(0, budget).join("")}\n[truncated — raise maxTokens]` : out);
           } catch (err) {
             return fail(`svg_digest failed: ${errMessage(err)}`);
           }

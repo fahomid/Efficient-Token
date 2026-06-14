@@ -746,6 +746,14 @@ async function main(): Promise<void> {
     const viMixNote = viMix.content.find((c) => c.type === "text");
     check("view_image skips non-raster (svg) but keeps the raster", viMix.content.filter((c) => c.type === "image").length === 1 && !!viMixNote && viMixNote.type === "text" && viMixNote.text.includes("svg"));
     check("view_image all-unsupported is an error", (await vi.handler({ paths: ["img/icon.svg"] })).isError === true);
+    // adversarial-review fix: output is bounded by path count and an aggregate byte budget
+    check("view_image caps the path count", (await vi.handler({ paths: Array.from({ length: 10 }, () => "img/pixel.png") })).content.filter((c) => c.type === "image").length <= 8);
+    const bigImg = Buffer.alloc(6_500_000);
+    await fsp.writeFile(path.join(root, "img/big1.png"), bigImg);
+    await fsp.writeFile(path.join(root, "img/big2.png"), bigImg);
+    const viAgg = await vi.handler({ paths: ["img/big1.png", "img/big2.png"], maxBytes: 7_000_000 });
+    const viAggNote = viAgg.content.find((c) => c.type === "text");
+    check("view_image enforces an aggregate byte budget", viAgg.content.filter((c) => c.type === "image").length === 1 && !!viAggNote && viAggNote.type === "text" && viAggNote.text.includes("aggregate"));
 
     // --- media_info plugin ----------------------------------------------
     const miPlugin = mediaInfoPlugin();
@@ -756,6 +764,16 @@ async function main(): Promise<void> {
     await fsp.writeFile(path.join(root, "img/clip.mp4"), Buffer.from("not a real mp4"));
     const miMp4 = textOf(await mi.handler({ paths: ["img/clip.mp4"] }));
     check("media_info handles A/V path gracefully", miMp4.includes("clip.mp4") && (miMp4.includes("ffprobe") || miMp4.includes("probe failed") || miMp4.includes("mp4")));
+    // adversarial-review fix: malformed headers report "dimensions unavailable", not garbage
+    await fsp.writeFile(path.join(root, "img/fake.gif"), Buffer.from("GIF rocks!!"));
+    check("media_info rejects a non-GIF with a GIF prefix", textOf(await mi.handler({ paths: ["img/fake.gif"] })).includes("dimensions unavailable"));
+    const badBmp = Buffer.alloc(26);
+    badBmp[0] = 0x42;
+    badBmp[1] = 0x4d;
+    badBmp.writeInt32LE(-5, 18);
+    badBmp.writeInt32LE(10, 22);
+    await fsp.writeFile(path.join(root, "img/bad.bmp"), badBmp);
+    check("media_info rejects BMP negative width", textOf(await mi.handler({ paths: ["img/bad.bmp"] })).includes("dimensions unavailable"));
 
     // --- design_tokens plugin -------------------------------------------
     await ctx.fs.writeAtomic("dt/theme.css", ":root {\n  --color-primary: #3366ff;\n  --space-4: 16px;\n  --font-family-base: 'Inter', sans-serif;\n  --radius: 8px;\n}\n");
@@ -790,6 +808,23 @@ async function main(): Promise<void> {
     check("svg_digest reports structure without dumping markup",
       svgRes.includes("viewBox: 0 0 24 24") && svgRes.includes("path×2") && svgRes.includes("ids (3)") && svgRes.includes("grad1") && !svgRes.includes("M0 0L10 10"));
     check("svg_digest rejects non-svg", (await svg.handler({ path: "sample.ts" })).isError === true);
+    // adversarial-review fix: a hostile all-word-char <svg> tag must not stall (was O(n²))
+    await ctx.fs.writeAtomic("svg/huge.svg", `<svg ${"a".repeat(300000)}></svg>`);
+    const svgT0 = Date.now();
+    const svgHuge = await svg.handler({ path: "svg/huge.svg" });
+    check("svg_digest is time-bounded on a hostile tag", !svgHuge.isError && Date.now() - svgT0 < 3000, `${Date.now() - svgT0}ms`);
+    // adversarial-review fix: truncation slices on code points (no lone surrogate)
+    await ctx.fs.writeAtomic("svg/emoji.svg", `<svg viewBox="0 0 1 1"><g id="${"\u{1F600}".repeat(50)}"/></svg>`);
+    const svgEmoji = textOf(await svg.handler({ path: "svg/emoji.svg", maxTokens: 10 }));
+    let svgLone = false;
+    for (let i = 0; i < svgEmoji.length; i++) {
+      const c = svgEmoji.charCodeAt(i);
+      if (c >= 0xd800 && c <= 0xdbff) {
+        if (svgEmoji.charCodeAt(i + 1) >= 0xdc00 && svgEmoji.charCodeAt(i + 1) <= 0xdfff) i++;
+        else { svgLone = true; break; }
+      } else if (c >= 0xdc00 && c <= 0xdfff) { svgLone = true; break; }
+    }
+    check("svg_digest truncation is surrogate-safe", !svgLone);
 
     // --- font_info plugin -----------------------------------------------
     const fontPlugin = fontInfoPlugin();
@@ -831,6 +866,10 @@ async function main(): Promise<void> {
       tuRes.includes("defined but unused (1)") && tuRes.includes("--unused") && tuRes.includes("used but undefined (1)") && tuRes.includes("--missing"));
     await ctx.fs.writeAtomic("tu/clean.css", ":root { --c: red; }\n.b { color: var(--c); }\n");
     check("token_usage clean report", textOf(await tu.handler({ paths: ["tu/clean.css"] })).includes("every defined custom property is referenced"));
+    // adversarial-review fix: --x: inside a string or comment is not a definition
+    await ctx.fs.writeAtomic("tu/noise.css", ':root { --real: 1px; }\n.a { content: " --fake: x "; width: var(--real); }\n/* --comment: y */\n');
+    const tuNoise = textOf(await tu.handler({ paths: ["tu/noise.css"] }));
+    check("token_usage ignores --x in strings/comments", !tuNoise.includes("--fake") && !tuNoise.includes("--comment") && tuNoise.includes("every defined custom property is referenced"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

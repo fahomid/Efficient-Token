@@ -3,7 +3,10 @@ import { z } from "zod";
 import type { CoreContext, Plugin, ToolContent } from "../../core/contract.js";
 import { errMessage, fail } from "../../core/result.js";
 
-const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
+const DEFAULT_MAX_BYTES = 2 * 1024 * 1024; // per-image default
+const MAX_PER_IMAGE_BYTES = 8 * 1024 * 1024; // hard ceiling even if caller asks for more
+const MAX_TOTAL_BYTES = 12 * 1024 * 1024; // aggregate cap across all images in one call
+const MAX_PATHS = 8;
 
 const MIME_BY_EXT: Readonly<Record<string, string>> = {
   png: "image/png",
@@ -39,16 +42,19 @@ export function viewImagePlugin(): Plugin {
           "See raster image file(s) directly (png/jpg/gif/webp/avif/bmp) — pass one or more paths and they are returned to you as viewable images. Use this to inspect a rendered frame / screenshot / exported asset after generating it, instead of guessing or asking for a paste. Render at a modest size; oversized files are refused (raise maxBytes). For SVG/vector use code_read or svg_digest. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
-          paths: z.array(z.string()).min(1).describe("Image file path(s) relative to the workspace root (e.g. a rendered frame)."),
-          maxBytes: z.number().int().positive().optional().describe(`Per-image size limit before it is refused (default ${DEFAULT_MAX_BYTES}).`),
+          paths: z.array(z.string()).min(1).max(MAX_PATHS).describe("Image file path(s) relative to the workspace root (e.g. a rendered frame)."),
+          maxBytes: z.number().int().positive().max(MAX_PER_IMAGE_BYTES).optional().describe(`Per-image size limit before it is refused (default ${DEFAULT_MAX_BYTES}, max ${MAX_PER_IMAGE_BYTES}).`),
         },
         handler: async (args) => {
           try {
-            const paths = (args.paths as unknown[]).map(String);
-            const maxBytes = args.maxBytes === undefined ? DEFAULT_MAX_BYTES : Number(args.maxBytes);
+            // Bound all three multiplicands (count × per-image × aggregate) so the
+            // emitted base64 stays token/transport-bounded regardless of input.
+            const paths = (args.paths as unknown[]).map(String).slice(0, MAX_PATHS);
+            const maxBytes = Math.min(args.maxBytes === undefined ? DEFAULT_MAX_BYTES : Number(args.maxBytes), MAX_PER_IMAGE_BYTES);
 
             const notes: string[] = [];
             const blocks: ToolContent[] = [];
+            let total = 0;
             for (const p of paths) {
               const ext = extOf(p);
               const mime = MIME_BY_EXT[ext];
@@ -59,6 +65,11 @@ export function viewImagePlugin(): Plugin {
               try {
                 const { abs, bytes } = await ctx.fs.readBytes(p, maxBytes);
                 const rel = ctx.paths.relative(abs);
+                if (total + bytes.length > MAX_TOTAL_BYTES) {
+                  notes.push(`  ${rel}: skipped (aggregate image budget ${MAX_TOTAL_BYTES} bytes exceeded)`);
+                  continue;
+                }
+                total += bytes.length;
                 blocks.push({ type: "image", data: bytes.toString("base64"), mimeType: mime });
                 notes.push(`  ${rel}: ${mime}, ${bytes.length} bytes`);
               } catch (e) {

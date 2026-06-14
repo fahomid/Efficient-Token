@@ -15,13 +15,16 @@ export function imageDimensions(b: Buffer): ImageDims | undefined {
   if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
     return { format: "png", width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
   }
-  // GIF: "GIF8", logical screen width/height are LE at 6/8.
-  if (b.length >= 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) {
+  // GIF: full "GIF87a"/"GIF89a" signature, then LE screen width/height at 6/8.
+  if (b.length >= 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38 && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) {
     return { format: "gif", width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
   }
-  // BMP: "BM", DIB width/height (signed LE) at 18/22; height may be negative (top-down).
+  // BMP: "BM", DIB width/height (signed LE) at 18/22; height may be negative
+  // (top-down). A non-positive width is malformed -> report dims as unavailable.
   if (b.length >= 26 && b[0] === 0x42 && b[1] === 0x4d) {
-    return { format: "bmp", width: b.readInt32LE(18), height: Math.abs(b.readInt32LE(22)) };
+    const w = b.readInt32LE(18);
+    const h = Math.abs(b.readInt32LE(22));
+    return w > 0 && h > 0 ? { format: "bmp", width: w, height: h } : { format: "bmp" };
   }
   // WebP: RIFF....WEBP, then a VP8 variant chunk.
   if (b.length >= 30 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") {
@@ -57,7 +60,14 @@ export function imageDimensions(b: Buffer): ImageDims | undefined {
       }
       // SOF0..SOF15 carry the frame size; skip DHT(C4)/JPG(C8)/DAC(CC).
       if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-        return { format: "jpeg", height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+        // A real SOF segment is length(2) precision(1) height(2) width(2)…, so
+        // its declared length must be >= 8; otherwise it's a coincidental/
+        // truncated marker — skip it rather than return garbage dimensions.
+        if (b.readUInt16BE(i + 2) >= 8) {
+          return { format: "jpeg", height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+        }
+        i += 2 + b.readUInt16BE(i + 2);
+        continue;
       }
       // Standalone markers (SOI/EOI/RSTn/TEM) carry no length.
       if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
