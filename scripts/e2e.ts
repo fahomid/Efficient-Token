@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the fifteen free tools",
-      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,repo_map,review_branch",
+      "tools/list returns the seventeen free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,note_read,note_write,repo_map,review_branch",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -186,6 +186,10 @@ async function main(): Promise<void> {
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));
     const located = await client.callTool({ name: "check_locate", arguments: { script: "ok" } });
     check("check_locate runs a script over the wire", !located.isError && resultText(located).includes("✓ ok: passed"));
+
+    await client.callTool({ name: "note_write", arguments: { name: "scratch", content: "remember this\n" } });
+    const noteRead = await client.callTool({ name: "note_read", arguments: { name: "scratch" } });
+    check("note write/read round-trips over the wire", !noteRead.isError && resultText(noteRead).includes("remember this"));
 
     const escaped = await client.callTool({
       name: "code_read",

@@ -65,6 +65,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `code_edit` | Exact find-and-replace in a file (Claude `Edit` semantics): `oldString` must match **verbatim** and be **unique** unless `replaceAll=true`; refuses missing/ambiguous matches; atomic write. **Refuses (and never writes) a change that would leave an unclosed/unbalanced token** (e.g. a missing `}`) — reports the location so you can retry — unless `validate=false`. *(mutating)* |
 | `code_write` | Create or fully overwrite a file (Claude `Write` semantics); creates parent dirs; atomic write. Same **syntax-error recovery guard** as `code_edit` (`validate=false` to override). *(mutating)* |
 | `apply_patch` | Apply **many edits across one or more files in one atomic call** (all-or-nothing). Each edit follows `code_edit` semantics; validated (incl. syntax guard) in memory first — if anything fails, nothing is written. Cuts the round-trips of editing files one at a time. *(mutating)* |
+| `note_write` / `note_read` | A small persistent **scratchpad** under `.efficient-token/notes/` — stash and recall plans/findings across steps and agents without re-deriving them. *(write / read)* |
 
 Read tools declare `readOnlyHint`; the two mutating tools declare `destructiveHint` so hosts can gate them. All writes stay inside the workspace root (symlink/ADS-safe) and are atomic (temp + rename).
 

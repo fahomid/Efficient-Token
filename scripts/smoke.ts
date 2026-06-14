@@ -36,6 +36,7 @@ import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
+import { notePlugin } from "../src/plugins/note/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 
@@ -471,6 +472,22 @@ async function main(): Promise<void> {
 
     const apEscape = await ap.handler({ edits: [{ path: "../escape.ts", oldString: "a", newString: "b" }] });
     check("apply_patch blocks path escape", apEscape.isError === true);
+
+    // --- note plugin (scratchpad) ---------------------------------------
+    const notePl = notePlugin();
+    await notePl.init?.(ctx);
+    const nw = tool(notePl, "note_write");
+    const nr = tool(notePl, "note_read");
+
+    const nWrite = await nw.handler({ name: "plan", content: "step 1\nstep 2\n" });
+    check("note_write writes a note", !nWrite.isError && (await ctx.fs.read(".efficient-token/notes/plan.md")).content === "step 1\nstep 2\n");
+    check("note_read reads a note", textOf(await nr.handler({ name: "plan" })).includes("step 1"));
+    const nApp = await nw.handler({ name: "plan", content: "step 3\n", append: true });
+    check("note_write appends", !nApp.isError && (await ctx.fs.read(".efficient-token/notes/plan.md")).content === "step 1\nstep 2\nstep 3\n");
+    check("note_read lists notes", textOf(await nr.handler({})).includes("plan"));
+    check("note_read missing note", (await nr.handler({ name: "nope" })).isError === true);
+    check("note_write rejects unsafe name", (await nw.handler({ name: "../evil", content: "x" })).isError === true);
+    check("note_read rejects unsafe name", (await nr.handler({ name: "../evil" })).isError === true);
 
     // --- code_search plugin (Grep semantics) ----------------------------
     await ctx.fs.writeAtomic("srch/a.ts", "export function alpha() {}\nconst beta = 1;\n");
