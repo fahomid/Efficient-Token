@@ -67,14 +67,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the six free tools",
-      names.join(",") === "code_edit,code_outline,code_read,code_search,code_write,health",
+      "tools/list returns the seven free tools",
+      names.join(",") === "code_edit,code_outline,code_read,code_search,code_write,find_references,health",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -130,6 +130,10 @@ async function main(): Promise<void> {
       arguments: { pattern: "function add", outputMode: "content" },
     });
     check("code_search finds over the wire", resultText(searched).includes("sample.ts:") && resultText(searched).includes("function add"));
+
+    const refs = await client.callTool({ name: "find_references", arguments: { symbol: "add" } });
+    const refsTxt = resultText(refs);
+    check("find_references over the wire", !refs.isError && refsTxt.includes("Definitions of \"add\"") && refsTxt.includes("sample.ts:"));
 
     const escaped = await client.callTool({
       name: "code_read",

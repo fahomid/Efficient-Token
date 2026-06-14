@@ -24,6 +24,7 @@ import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
 import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
+import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
@@ -408,6 +409,27 @@ async function main(): Promise<void> {
     check("code_search invalid regex", badRe.isError === true && textOf(badRe).includes("invalid regex"));
 
     check("code_search skips node_modules implicitly", !textOf(await cs.handler({ pattern: "alpha" })).includes("node_modules"));
+
+    // --- find_references plugin -----------------------------------------
+    await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
+    await ctx.fs.writeAtomic("refs/use.ts", "import { widget } from './lib';\nconst x = widget();\nconst y = widget();\n");
+    await ctx.fs.writeAtomic("refs/other.ts", "const widgetage = 2;\nconst sprocket = widget;\n");
+    const refsPlugin = findReferencesPlugin();
+    await refsPlugin.init?.(ctx);
+    const fr = tool(refsPlugin, "find_references");
+
+    const r1 = await fr.handler({ symbol: "widget", path: "refs" });
+    const r1t = textOf(r1);
+    check("find_references finds the definition", !r1.isError && r1t.includes("refs/lib.ts:1") && r1t.includes("function widget"));
+    check("find_references finds usages", r1t.includes("refs/use.ts:1:") && r1t.includes("refs/use.ts:2:") && r1t.includes("refs/use.ts:3:"));
+    check("find_references uses identifier boundaries (no 'widgetage')", !r1t.includes("widgetage = 2"));
+    check("find_references excludes the def line from references", !/References[\s\S]*refs\/lib\.ts:1:/.test(r1t));
+
+    const r2 = await fr.handler({ symbol: "nonexistentSymbolXYZ", path: "refs" });
+    check("find_references handles no matches", textOf(r2).includes("No definitions or references"));
+
+    const r3 = await fr.handler({ symbol: "WIDGET", path: "refs", caseInsensitive: true });
+    check("find_references case-insensitive", textOf(r3).includes("refs/lib.ts:1"));
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
