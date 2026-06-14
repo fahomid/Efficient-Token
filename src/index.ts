@@ -27,6 +27,7 @@ import { findReferencesPlugin } from "./plugins/find-references/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
+import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 
 const VERSION = "0.1.0";
 
@@ -44,6 +45,7 @@ const plugins: Plugin[] = [
   codeContextPlugin(),
   repoMapPlugin(),
   diffDigestPlugin(),
+  reviewBranchPlugin(),
   codeCheckPlugin(),
   codeEditPlugin(),
   codeWritePlugin(),

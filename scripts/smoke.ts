@@ -36,6 +36,7 @@ import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
+import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
 export class Greeter {
@@ -604,6 +605,9 @@ async function main(): Promise<void> {
     const ddNonRepo = diffDigestPlugin();
     await ddNonRepo.init?.(ctx);
     check("diff_digest detects non-repo", (await tool(ddNonRepo, "diff_digest").handler({})).isError === true);
+    const rbNonRepo = reviewBranchPlugin();
+    await rbNonRepo.init?.(ctx);
+    check("review_branch detects non-repo", (await tool(rbNonRepo, "review_branch").handler({})).isError === true);
 
     // Real (isolated) git repo: exercise the success paths.
     const gitRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-git-"));
@@ -638,6 +642,16 @@ async function main(): Promise<void> {
 
       await g(["add", "f.ts"]);
       check("diff_digest staged mode", textOf(await dd.handler({ staged: true })).includes("+export const b = 3;"));
+
+      // review_branch: map changes to symbols
+      await fsp.writeFile(path.join(gitRoot, "mod.ts"), "export function alpha() {\n  return 1;\n}\nexport function beta() {\n  return 2;\n}\n");
+      await g(["add", "mod.ts"]);
+      await g(["commit", "-q", "-m", "add mod"]);
+      await fsp.writeFile(path.join(gitRoot, "mod.ts"), "export function alpha() {\n  return 100;\n}\nexport function beta() {\n  return 2;\n}\n");
+      const rbPlugin = reviewBranchPlugin();
+      await rbPlugin.init?.(gctx);
+      const rbt = textOf(await tool(rbPlugin, "review_branch").handler({}));
+      check("review_branch maps changes to symbols", rbt.includes("mod.ts") && rbt.includes("~ function alpha") && !rbt.includes("~ function beta"));
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }

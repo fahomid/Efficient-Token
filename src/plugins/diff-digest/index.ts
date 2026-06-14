@@ -1,12 +1,8 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
+import { gitOk, isSafeRef, runGit } from "../../core/git.js";
 import { errMessage, fail, ok } from "../../core/result.js";
-
-const execFileP = promisify(execFile);
 
 /**
  * `diff_digest` — summarize git changes as just the changed hunks (or a `--stat`
@@ -39,8 +35,9 @@ export function diffDigestPlugin(): Plugin {
         },
         handler: async (args) => {
           try {
+            const root = ctx.config.root;
             const ref = args.ref === undefined ? undefined : String(args.ref);
-            if (ref !== undefined && (ref.trim() === "" || ref.startsWith("-"))) {
+            if (ref !== undefined && !isSafeRef(ref)) {
               return fail(`invalid ref: ${JSON.stringify(ref)}`);
             }
             const staged = args.staged === true;
@@ -48,7 +45,7 @@ export function diffDigestPlugin(): Plugin {
             const context = args.context === undefined ? 3 : Number(args.context);
             const maxTokens = args.maxTokens === undefined ? ctx.config.maxReadTokens : Number(args.maxTokens);
 
-            if (!(await gitOk(["rev-parse", "--is-inside-work-tree"]))) {
+            if (!(await gitOk(root, ["rev-parse", "--is-inside-work-tree"]))) {
               return fail("not a git repository (or git is unavailable) at the workspace root.");
             }
 
@@ -59,7 +56,7 @@ export function diffDigestPlugin(): Plugin {
             else dargs.push(`-U${context}`);
             if (ref !== undefined) {
               dargs.push(ref);
-            } else if (!staged && (await gitOk(["rev-parse", "--verify", "--quiet", "HEAD"]))) {
+            } else if (!staged && (await gitOk(root, ["rev-parse", "--verify", "--quiet", "HEAD"]))) {
               dargs.push("HEAD");
             }
             if (args.path !== undefined) {
@@ -67,7 +64,7 @@ export function diffDigestPlugin(): Plugin {
               dargs.push("--", String(args.path));
             }
 
-            const stdout = await runGit(dargs);
+            const stdout = await runGit(root, dargs);
             if (stdout.trim() === "") {
               return ok(`No ${staged ? "staged " : ""}changes${ref ? ` vs ${ref}` : ""}.`);
             }
@@ -88,24 +85,4 @@ export function diffDigestPlugin(): Plugin {
       },
     ],
   };
-
-  async function runGit(args: string[]): Promise<string> {
-    const { stdout } = await execFileP("git", args, {
-      cwd: ctx.config.root,
-      maxBuffer: 16 * 1024 * 1024,
-      timeout: 20_000,
-      windowsHide: true,
-      encoding: "utf8",
-    });
-    return stdout;
-  }
-
-  async function gitOk(args: string[]): Promise<boolean> {
-    try {
-      await runGit(args);
-      return true;
-    } catch {
-      return false;
-    }
-  }
 }

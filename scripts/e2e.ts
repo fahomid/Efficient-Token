@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the thirteen free tools",
-      names.join(",") === "apply_patch,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,repo_map",
+      "tools/list returns the fourteen free tools",
+      names.join(",") === "apply_patch,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,repo_map,review_branch",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -179,6 +179,8 @@ async function main(): Promise<void> {
     // respond gracefully over the wire rather than crash.
     const dd = await client.callTool({ name: "diff_digest", arguments: {} });
     check("diff_digest responds gracefully (non-repo) over the wire", dd.isError === true && resultText(dd).includes("not a git repository"));
+    const rb = await client.callTool({ name: "review_branch", arguments: {} });
+    check("review_branch responds gracefully (non-repo) over the wire", rb.isError === true && resultText(rb).includes("not a git repository"));
 
     const checked = await client.callTool({ name: "code_check", arguments: { script: "ok" } });
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));
