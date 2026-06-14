@@ -50,6 +50,7 @@ import { replaceSymbolPlugin } from "./plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
+import { svgDigestPlugin } from "./plugins/svg-digest/index.js";
 import { symbolHistoryPlugin } from "./plugins/symbol-history/index.js";
 import { testRunPlugin } from "./plugins/test-run/index.js";
 import { viewImagePlugin } from "./plugins/view-image/index.js";
@@ -72,6 +73,7 @@ const plugins: Plugin[] = [
   mediaInfoPlugin(),
   designTokensPlugin(),
   colorContrastPlugin(),
+  svgDigestPlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),

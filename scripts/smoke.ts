@@ -58,6 +58,7 @@ import { readManyPlugin } from "../src/plugins/read-many/index.js";
 import { replaceSymbolPlugin } from "../src/plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
+import { svgDigestPlugin } from "../src/plugins/svg-digest/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
 import { testRunPlugin } from "../src/plugins/test-run/index.js";
@@ -777,6 +778,16 @@ async function main(): Promise<void> {
     check("color_contrast converts formats", colConv.includes("#3366ff") && colConv.includes("hsl("));
     check("color_contrast parses named + hsl to the same hex", textOf(await col.handler({ color: "red" })).includes("#ff0000") && textOf(await col.handler({ color: "hsl(0, 100%, 50%)" })).includes("#ff0000"));
     check("color_contrast rejects a bad color", (await col.handler({ color: "notacolor" })).isError === true);
+
+    // --- svg_digest plugin ----------------------------------------------
+    await ctx.fs.writeAtomic("svg/icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">\n  <defs><linearGradient id="grad1"/></defs>\n  <g id="layer1"><path d="M0 0L10 10"/><path d="M2 2"/><circle id="dot" cx="5" cy="5" r="2"/></g>\n  <rect x="0" y="0" width="24" height="24"/>\n</svg>\n');
+    const svgPlugin = svgDigestPlugin();
+    await svgPlugin.init?.(ctx);
+    const svg = tool(svgPlugin, "svg_digest");
+    const svgRes = textOf(await svg.handler({ path: "svg/icon.svg" }));
+    check("svg_digest reports structure without dumping markup",
+      svgRes.includes("viewBox: 0 0 24 24") && svgRes.includes("path×2") && svgRes.includes("ids (3)") && svgRes.includes("grad1") && !svgRes.includes("M0 0L10 10"));
+    check("svg_digest rejects non-svg", (await svg.handler({ path: "sample.ts" })).isError === true);
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
