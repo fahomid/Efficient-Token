@@ -42,6 +42,7 @@ import { globPlugin } from "../src/plugins/glob/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
+import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { readAtRevPlugin } from "../src/plugins/read-at-rev/index.js";
@@ -915,6 +916,18 @@ async function main(): Promise<void> {
       check("commit_log path scope", textOf(await cl.handler({ path: "mod.ts" })).includes("add mod"));
       check("commit_log limit caps", textOf(await cl.handler({ limit: 1 })).includes("— 1 commit(s)"));
       check("commit_log invalid ref rejected", (await cl.handler({ ref: "--evil" })).isError === true);
+
+      // line_blame: provenance with collapsed runs
+      const lbPlugin = lineBlamePlugin();
+      await lbPlugin.init?.(gctx);
+      const lb = tool(lbPlugin, "line_blame");
+      const lbWhole = textOf(await lb.handler({ path: "mod.ts" }));
+      check("line_blame collapses runs with author/date/summary",
+        lbWhole.includes("Test") && /\d{4}-\d{2}-\d{2}/.test(lbWhole) && (lbWhole.includes("bump alpha") || lbWhole.includes("add mod")) && lbWhole.includes("run(s)"));
+      const lbSym = textOf(await lb.handler({ path: "mod.ts", symbol: "alpha" }));
+      check("line_blame scopes to a symbol", lbSym.includes("function alpha") && lbSym.includes("bump alpha"));
+      await fsp.writeFile(path.join(gitRoot, "mod.ts"), "export function alpha() {\n  return 999;\n}\nexport function beta() {\n  return 2;\n}\n");
+      check("line_blame marks uncommitted lines", textOf(await lb.handler({ path: "mod.ts", startLine: 2, endLine: 2 })).includes("uncommitted"));
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }
