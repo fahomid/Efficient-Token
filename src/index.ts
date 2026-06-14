@@ -37,6 +37,7 @@ import { importMapPlugin } from "./plugins/import-map/index.js";
 import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { lineBlamePlugin } from "./plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "./plugins/marker-inventory/index.js";
+import { moveSymbolPlugin } from "./plugins/move-symbol/index.js";
 import { notePlugin } from "./plugins/note/index.js";
 import { outlineDiffPlugin } from "./plugins/outline-diff/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
@@ -90,6 +91,7 @@ const plugins: Plugin[] = [
   codeWritePlugin(),
   replaceSymbolPlugin(),
   applyPatchPlugin(),
+  moveSymbolPlugin(),
   projectRenamePlugin(),
   notePlugin(),
 ];

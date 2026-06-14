@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the thirty-six free tools",
-      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate,type_closure",
+      "tools/list returns the thirty-seven free tools",
+      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,move_symbol,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate,type_closure",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     );
     check(
       "write tools annotated destructive (not read-only)",
-      ["code_edit", "code_write", "apply_patch", "replace_symbol"].every(
+      ["code_edit", "code_write", "apply_patch", "replace_symbol", "move_symbol"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === false && byName.get(n)?.annotations?.destructiveHint === true,
       ),
     );
@@ -206,6 +206,13 @@ async function main(): Promise<void> {
     await client.callTool({ name: "code_write", arguments: { path: "gen/ch.ts", content: "export function leaf() { return 1; }\nexport function root() {\n  return leaf();\n}\n" } });
     const chy = await client.callTool({ name: "call_hierarchy", arguments: { symbol: "root", path: "gen" } });
     check("call_hierarchy over the wire", !chy.isError && resultText(chy).includes("callees (1)") && resultText(chy).includes("leaf"));
+
+    await client.callTool({ name: "code_write", arguments: { path: "mv/src.ts", content: "export function widget() {\n  return 1;\n}\n" } });
+    await client.callTool({ name: "code_write", arguments: { path: "mv/dst.ts", content: "export const k = 0;\n" } });
+    const moved = await client.callTool({ name: "move_symbol", arguments: { symbol: "widget", from: "mv/src.ts", to: "mv/dst.ts" } });
+    check("move_symbol over the wire", !moved.isError && resultText(moved).includes("Moved function widget"));
+    const dstRead = await client.callTool({ name: "code_read", arguments: { path: "mv/dst.ts", symbol: "widget" } });
+    check("move_symbol persisted", resultText(dstRead).includes("function widget"));
 
     const readMany = await client.callTool({ name: "read_many", arguments: { reads: [{ path: "sample.ts", symbol: "add" }, { path: "sample.ts", symbol: "Greeter" }] } });
     const rmt = resultText(readMany);

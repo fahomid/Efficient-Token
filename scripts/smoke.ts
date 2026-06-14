@@ -46,6 +46,7 @@ import { importMapPlugin } from "../src/plugins/import-map/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "../src/plugins/marker-inventory/index.js";
+import { moveSymbolPlugin } from "../src/plugins/move-symbol/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { outlineDiffPlugin } from "../src/plugins/outline-diff/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
@@ -844,6 +845,24 @@ async function main(): Promise<void> {
     check("call_hierarchy lists callees with their defs", chRes.includes("callees (2)") && chRes.includes("helper") && chRes.includes("other") && chRes.includes("ch/lib.ts"));
     check("call_hierarchy lists callers with enclosing symbol", chRes.includes("callers (1") && chRes.includes("ch/use.ts:2") && chRes.includes("run"));
     check("call_hierarchy unknown symbol errors", (await ch.handler({ symbol: "nopeFn", path: "ch" })).isError === true);
+
+    // --- move_symbol plugin ---------------------------------------------
+    await ctx.fs.writeAtomic("ms/a.ts", "export function moved() {\n  return 1;\n}\nexport function stays() {\n  return moved() + 1;\n}\n");
+    await ctx.fs.writeAtomic("ms/b.ts", "export const existing = 0;\n");
+    await ctx.fs.writeAtomic("ms/c.ts", 'import { moved } from "./a.js";\nexport const usesIt = moved();\n');
+    const msPl = moveSymbolPlugin();
+    await msPl.init?.(ctx);
+    const ms = tool(msPl, "move_symbol");
+    const msDry = textOf(await ms.handler({ symbol: "moved", from: "ms/a.ts", to: "ms/b.ts", dryRun: true }));
+    check("move_symbol dryRun writes nothing", msDry.includes("DRY RUN") && (await ctx.fs.read("ms/b.ts")).content === "export const existing = 0;\n");
+    const moveRes = await ms.handler({ symbol: "moved", from: "ms/a.ts", to: "ms/b.ts" });
+    const aAfter = (await ctx.fs.read("ms/a.ts")).content;
+    const bAfter = (await ctx.fs.read("ms/b.ts")).content;
+    const cAfter = (await ctx.fs.read("ms/c.ts")).content;
+    check("move_symbol relocates the definition", !moveRes.isError && !aAfter.includes("function moved()") && bAfter.includes("function moved()") && bAfter.includes("existing"));
+    check("move_symbol re-imports into source when still used", aAfter.includes('import { moved } from "./b'));
+    check("move_symbol rewrites named importers", cAfter.includes('from "./b.js"') && !cAfter.includes('from "./a.js"'));
+    check("move_symbol unknown symbol errors", (await ms.handler({ symbol: "nopeSym", from: "ms/a.ts", to: "ms/b.ts" })).isError === true);
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");
