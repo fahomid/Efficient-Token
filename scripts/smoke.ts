@@ -35,6 +35,7 @@ import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
 import { changeCoveragePlugin } from "../src/plugins/change-coverage/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
+import { colorContrastPlugin } from "../src/plugins/color-contrast/index.js";
 import { commitLogPlugin } from "../src/plugins/commit-log/index.js";
 import { conflictDigestPlugin } from "../src/plugins/conflict-digest/index.js";
 import { designTokensPlugin } from "../src/plugins/design-tokens/index.js";
@@ -765,6 +766,17 @@ async function main(): Promise<void> {
     const dtColor = textOf(await dt.handler({ paths: ["dt/theme.css"], category: "color" }));
     check("design_tokens category filter", dtColor.includes("color-primary") && !dtColor.includes("space-4"));
     check("design_tokens classifies fonts by name", textOf(await dt.handler({ paths: ["dt/theme.css"], category: "font" })).includes("font-family-base"));
+
+    // --- color_contrast plugin ------------------------------------------
+    const colPlugin = colorContrastPlugin();
+    await colPlugin.init?.(ctx);
+    const col = tool(colPlugin, "color_contrast");
+    const colMax = textOf(await col.handler({ color: "#ffffff", against: "#000000" }));
+    check("color_contrast computes WCAG ratio + verdicts", colMax.includes("21:1") && colMax.includes("AAA normal (>=7.0): PASS"));
+    const colConv = textOf(await col.handler({ color: "rgb(51, 102, 255)" }));
+    check("color_contrast converts formats", colConv.includes("#3366ff") && colConv.includes("hsl("));
+    check("color_contrast parses named + hsl to the same hex", textOf(await col.handler({ color: "red" })).includes("#ff0000") && textOf(await col.handler({ color: "hsl(0, 100%, 50%)" })).includes("#ff0000"));
+    check("color_contrast rejects a bad color", (await col.handler({ color: "notacolor" })).isError === true);
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

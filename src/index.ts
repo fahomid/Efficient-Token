@@ -26,6 +26,7 @@ import { changeCoveragePlugin } from "./plugins/change-coverage/index.js";
 import { checkLocatePlugin } from "./plugins/check-locate/index.js";
 import { codeCheckPlugin } from "./plugins/code-check/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
+import { colorContrastPlugin } from "./plugins/color-contrast/index.js";
 import { commitLogPlugin } from "./plugins/commit-log/index.js";
 import { designTokensPlugin } from "./plugins/design-tokens/index.js";
 import { conflictDigestPlugin } from "./plugins/conflict-digest/index.js";
@@ -70,6 +71,7 @@ const plugins: Plugin[] = [
   viewImagePlugin(),
   mediaInfoPlugin(),
   designTokensPlugin(),
+  colorContrastPlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),
