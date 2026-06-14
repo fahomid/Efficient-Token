@@ -25,6 +25,7 @@ import { codeCheckPlugin } from "./plugins/code-check/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
 import { diffDigestPlugin } from "./plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "./plugins/find-references/index.js";
+import { globPlugin } from "./plugins/glob/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { notePlugin } from "./plugins/note/index.js";
@@ -42,6 +43,7 @@ const plugins: Plugin[] = [
   healthPlugin(),
   codeOutlinePlugin(),
   codeReadPlugin(),
+  globPlugin(),
   codeSearchPlugin(),
   grepContextPlugin(),
   findReferencesPlugin(),

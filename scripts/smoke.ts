@@ -34,6 +34,7 @@ import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
+import { globPlugin } from "../src/plugins/glob/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
@@ -585,6 +586,16 @@ async function main(): Promise<void> {
     } finally {
       await fsp.rm(scanOut, { recursive: true, force: true });
     }
+
+    // --- glob plugin ----------------------------------------------------
+    const globPl = globPlugin();
+    await globPl.init?.(ctx);
+    const gl = tool(globPl, "glob");
+    const globTs = textOf(await gl.handler({ pattern: "*.ts", path: "srch" }));
+    check("glob lists matching files", globTs.includes("srch/a.ts") && globTs.includes("srch/b.ts") && !globTs.includes("srch/c.txt"));
+    check("glob type filter excludes others", !textOf(await gl.handler({ type: "ts", path: "srch" })).includes(".txt"));
+    check("glob no match", textOf(await gl.handler({ pattern: "*.zzz", path: "srch" })).includes("No files"));
+    check("glob headLimit caps output", textOf(await gl.handler({ path: "srch", headLimit: 1 })).includes("1+ file(s)"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");

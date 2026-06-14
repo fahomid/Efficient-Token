@@ -53,6 +53,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `health` | Confirm the server is connected and see tier / workspace / limits. *(read-only)* |
 | `code_outline` | List a file's symbols (functions, classes, methods, types) with line ranges and signatures — not the source. *(read-only)* |
 | `code_read` | Read source faithfully but minimally: one **symbol**, a **line range**, or a **whole file** that degrades to an outline + head when it exceeds the token budget. *(read-only)* |
+| `glob` | List file **paths** matching a glob/type (no content), like Claude's `Glob` — find files without reading directories. *(read-only)* |
 | `code_search` | Regex search across the workspace (Claude `Grep`/ripgrep): `files_with_matches` (default), `content` (matching lines), or `count`; `glob`/`type` filters, context lines, case-insensitive, multiline. Returns matches — not whole files. *(read-only)* |
 | `find_references` | Locate where a symbol is **defined** (AST-precise: kind + line + signature) and **used** (identifier-boundary scan) across the workspace, as `file:line` locations. *(read-only)* |
 | `grep_context` | Regex search that returns each match **with its enclosing function/class source** (deduped, line-numbered, matched lines marked `›`) — one call instead of search → open-each-file. *(read-only)* |
