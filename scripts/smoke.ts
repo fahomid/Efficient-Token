@@ -32,6 +32,7 @@ import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
+import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 
@@ -548,6 +549,20 @@ async function main(): Promise<void> {
 
     const r3 = await fr.handler({ symbol: "WIDGET", path: "refs", caseInsensitive: true });
     check("find_references case-insensitive", textOf(r3).includes("refs/lib.ts:1"));
+
+    // --- grep_context plugin --------------------------------------------
+    await ctx.fs.writeAtomic("gc/svc.ts", "export class Svc {\n  start() {\n    return doThing();\n  }\n  stop() {\n    return 0;\n  }\n}\nfunction doThing() { return 42; }\n");
+    const gcPlugin = grepContextPlugin();
+    await gcPlugin.init?.(ctx);
+    const gc = tool(gcPlugin, "grep_context");
+
+    const g1 = await gc.handler({ pattern: "doThing", path: "gc" });
+    const g1t = textOf(g1);
+    check("grep_context returns enclosing symbols", !g1.isError && g1t.includes("gc/svc.ts › method Svc.start") && g1t.includes("gc/svc.ts › function doThing"));
+    check("grep_context marks matched lines", g1t.includes("›") && g1t.includes("return doThing();"));
+    check("grep_context excludes unrelated symbols", !g1t.includes("Svc.stop"));
+    check("grep_context no match", textOf(await gc.handler({ pattern: "zzznope", path: "gc" })).includes("No matches"));
+    check("grep_context invalid regex", (await gc.handler({ pattern: "(", path: "gc" })).isError === true);
 
     // --- repo_map plugin ------------------------------------------------
     await ctx.fs.writeAtomic("rmap/api.ts", "export class Service {\n  run() {}\n}\nexport function helper() {}\nexport interface Opts { x: number }\n");

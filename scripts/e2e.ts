@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the eleven free tools",
-      names.join(",") === "apply_patch,code_check,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,health,repo_map",
+      "tools/list returns the twelve free tools",
+      names.join(",") === "apply_patch,code_check,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,repo_map",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -164,6 +164,9 @@ async function main(): Promise<void> {
     const refs = await client.callTool({ name: "find_references", arguments: { symbol: "add" } });
     const refsTxt = resultText(refs);
     check("find_references over the wire", !refs.isError && refsTxt.includes("Definitions of \"add\"") && refsTxt.includes("sample.ts:"));
+
+    const gctx = await client.callTool({ name: "grep_context", arguments: { pattern: "return a \\+ b", path: "sample.ts" } });
+    check("grep_context over the wire", !gctx.isError && resultText(gctx).includes("sample.ts › function add") && resultText(gctx).includes("›"));
 
     const map = await client.callTool({ name: "repo_map", arguments: {} });
     const mapTxt = resultText(map);
