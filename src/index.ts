@@ -13,8 +13,10 @@ import { createEntitlement } from "./services/license.js";
 import { createLogger } from "./services/logger.js";
 import { PathSandbox } from "./services/paths.js";
 
+import { codeEditPlugin } from "./plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "./plugins/code-outline/index.js";
 import { codeReadPlugin } from "./plugins/code-read/index.js";
+import { codeWritePlugin } from "./plugins/code-write/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 
 const VERSION = "0.1.0";
@@ -27,6 +29,8 @@ const plugins: Plugin[] = [
   healthPlugin(),
   codeOutlinePlugin(),
   codeReadPlugin(),
+  codeEditPlugin(),
+  codeWritePlugin(),
 ];
 
 async function main(): Promise<void> {

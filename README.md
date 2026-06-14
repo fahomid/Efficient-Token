@@ -50,9 +50,13 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 
 | Tool | Use it to… |
 | --- | --- |
-| `health` | Confirm the server is connected and see tier / workspace / limits. |
-| `code_outline` | List a file's symbols (functions, classes, methods, types) with line ranges and signatures — not the source. |
-| `code_read` | Read source faithfully but minimally: one **symbol**, a **line range**, or a **whole file** that degrades to an outline + head when it exceeds the token budget. |
+| `health` | Confirm the server is connected and see tier / workspace / limits. *(read-only)* |
+| `code_outline` | List a file's symbols (functions, classes, methods, types) with line ranges and signatures — not the source. *(read-only)* |
+| `code_read` | Read source faithfully but minimally: one **symbol**, a **line range**, or a **whole file** that degrades to an outline + head when it exceeds the token budget. *(read-only)* |
+| `code_edit` | Exact find-and-replace in a file (Claude `Edit` semantics): `oldString` must match **verbatim** and be **unique** unless `replaceAll=true`; refuses missing/ambiguous matches; atomic write. *(mutating)* |
+| `code_write` | Create or fully overwrite a file (Claude `Write` semantics); creates parent dirs; atomic write. *(mutating)* |
+
+Read tools declare `readOnlyHint`; the two mutating tools declare `destructiveHint` so hosts can gate them. All writes stay inside the workspace root (symlink/ADS-safe) and are atomic (temp + rename).
 
 ### Language support
 

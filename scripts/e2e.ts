@@ -67,14 +67,22 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the three free tools",
-      names.join(",") === "code_outline,code_read,health",
+      "tools/list returns the five free tools",
+      names.join(",") === "code_edit,code_outline,code_read,code_write,health",
       names.join(","),
     );
+    const byName = new Map(tools.map((t) => [t.name, t]));
     check(
-      "tools advertise read-only annotations",
-      tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.openWorldHint === false),
-      JSON.stringify(tools.map((t) => t.annotations)),
+      "read tools annotated read-only",
+      ["health", "code_outline", "code_read"].every(
+        (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
+      ),
+    );
+    check(
+      "write tools annotated destructive (not read-only)",
+      ["code_edit", "code_write"].every(
+        (n) => byName.get(n)?.annotations?.readOnlyHint === false && byName.get(n)?.annotations?.destructiveHint === true,
+      ),
     );
 
     const health = await client.callTool({ name: "health", arguments: {} });
@@ -95,6 +103,27 @@ async function main(): Promise<void> {
       "code_read symbol round-trips",
       readTxt.includes("function add") && readTxt.includes("return a + b;"),
     );
+
+    // write -> read -> edit -> read round-trip over the wire
+    const wrote = await client.callTool({
+      name: "code_write",
+      arguments: { path: "gen/hello.txt", content: "one\ntwo\n" },
+    });
+    check("code_write creates a file over the wire", !wrote.isError && resultText(wrote).includes("Created"));
+    const readBack = await client.callTool({ name: "code_read", arguments: { path: "gen/hello.txt" } });
+    check("written file reads back", resultText(readBack).includes("two"));
+    const edited = await client.callTool({
+      name: "code_edit",
+      arguments: { path: "gen/hello.txt", oldString: "two", newString: "TWO" },
+    });
+    check("code_edit applies over the wire", !edited.isError && resultText(edited).includes("replacement"));
+    const confirm = await client.callTool({ name: "code_read", arguments: { path: "gen/hello.txt" } });
+    check("edit persisted", resultText(confirm).includes("TWO") && !resultText(confirm).includes("| two"));
+    const editEscape = await client.callTool({
+      name: "code_edit",
+      arguments: { path: "../../../etc/hosts", oldString: "a", newString: "b" },
+    });
+    check("code_edit blocks path traversal over the wire", editEscape.isError === true);
 
     const escaped = await client.callTool({
       name: "code_read",

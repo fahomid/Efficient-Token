@@ -33,8 +33,21 @@ export class SafeFs {
     }
   }
 
-  /** Read a regular file as UTF-8; reject non-files and oversized files. */
+  /** Read a regular file as UTF-8 with a leading BOM stripped (for display/AST). */
   async read(p: string): Promise<ReadResult> {
+    return this.readImpl(p, true);
+  }
+
+  /**
+   * Like {@link read} but preserves the EXACT bytes (BOM kept). Use this for
+   * edits, where a faithful round-trip matters and the content is matched/rewritten
+   * verbatim rather than displayed.
+   */
+  async readRaw(p: string): Promise<ReadResult> {
+    return this.readImpl(p, false);
+  }
+
+  private async readImpl(p: string, stripBom: boolean): Promise<ReadResult> {
     const abs = this.paths.resolve(p);
     const st = await fsp.stat(abs);
     if (!st.isFile()) {
@@ -51,7 +64,7 @@ export class SafeFs {
     this.paths.assertContained(real, this.paths.relative(abs));
 
     let content = await fsp.readFile(abs, "utf8");
-    if (content.charCodeAt(0) === 0xfeff) content = content.slice(1); // strip BOM
+    if (stripBom && content.charCodeAt(0) === 0xfeff) content = content.slice(1);
     return { abs, content, lineCount: countLines(content) };
   }
 

@@ -18,8 +18,10 @@ import { SafeFs } from "../src/services/fs.js";
 import { createEntitlement } from "../src/services/license.js";
 import { createLogger } from "../src/services/logger.js";
 import { PathSandbox } from "../src/services/paths.js";
+import { codeEditPlugin } from "../src/plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
 import { codeReadPlugin } from "../src/plugins/code-read/index.js";
+import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
@@ -317,6 +319,55 @@ async function main(): Promise<void> {
     } else {
       check("paths.resolve ADS guard (skipped: not win32)", true);
     }
+
+    // --- code_write plugin (Write semantics) ----------------------------
+    const writePlugin = codeWritePlugin();
+    await writePlugin.init?.(ctx);
+    const cw = tool(writePlugin, "code_write");
+
+    const created = await cw.handler({ path: "w/new.txt", content: "hello\nworld\n" });
+    check("code_write creates file", !created.isError && textOf(created).includes("Created") && (await ctx.fs.read("w/new.txt")).content === "hello\nworld\n");
+    const overwritten = await cw.handler({ path: "w/new.txt", content: "changed\n" });
+    check("code_write overwrites file", !overwritten.isError && textOf(overwritten).includes("Overwrote") && (await ctx.fs.read("w/new.txt")).content === "changed\n");
+    check("code_write rejects path escape", (await cw.handler({ path: "../escape.txt", content: "x" })).isError === true);
+
+    // --- code_edit plugin (Edit semantics) ------------------------------
+    const editPlugin = codeEditPlugin();
+    await editPlugin.init?.(ctx);
+    const ce = tool(editPlugin, "code_edit");
+
+    await ctx.fs.writeAtomic("e/edit.txt", "alpha\nbeta\nalpha\n");
+    const uniqueEdit = await ce.handler({ path: "e/edit.txt", oldString: "beta", newString: "BETA" });
+    check("code_edit replaces unique match", !uniqueEdit.isError && (await ctx.fs.read("e/edit.txt")).content === "alpha\nBETA\nalpha\n");
+
+    const ambiguous = await ce.handler({ path: "e/edit.txt", oldString: "alpha", newString: "X" });
+    check("code_edit refuses ambiguous match", ambiguous.isError === true && textOf(ambiguous).includes("not unique (2 matches)"));
+    check("code_edit ambiguous left file unchanged", (await ctx.fs.read("e/edit.txt")).content === "alpha\nBETA\nalpha\n");
+
+    const all = await ce.handler({ path: "e/edit.txt", oldString: "alpha", newString: "X", replaceAll: true });
+    check("code_edit replaceAll replaces every match", !all.isError && textOf(all).includes("2 replacement(s)") && (await ctx.fs.read("e/edit.txt")).content === "X\nBETA\nX\n");
+
+    const notFound = await ce.handler({ path: "e/edit.txt", oldString: "zzz", newString: "y" });
+    check("code_edit reports missing oldString", notFound.isError === true && textOf(notFound).includes("not found"));
+
+    // newString with `$` patterns must be inserted LITERALLY (no String.replace).
+    await ctx.fs.writeAtomic("e/dollar.txt", "value = HERE;\n");
+    await ce.handler({ path: "e/dollar.txt", oldString: "HERE", newString: "$&$1$$x" });
+    check("code_edit inserts $ patterns literally", (await ctx.fs.read("e/dollar.txt")).content === "value = $&$1$$x;\n", (await ctx.fs.read("e/dollar.txt")).content);
+    await ctx.fs.writeAtomic("e/dollar2.txt", "a HERE b HERE c\n");
+    await ce.handler({ path: "e/dollar2.txt", oldString: "HERE", newString: "$&", replaceAll: true });
+    check("code_edit replaceAll inserts $ literally", (await ctx.fs.read("e/dollar2.txt")).content === "a $& b $& c\n");
+
+    const identical = await ce.handler({ path: "e/edit.txt", oldString: "X", newString: "X" });
+    check("code_edit rejects identical old/new", identical.isError === true && textOf(identical).includes("identical"));
+
+    check("code_edit rejects path escape", (await ce.handler({ path: "../escape.txt", oldString: "a", newString: "b" })).isError === true);
+
+    // code_edit preserves a BOM (uses raw read, not BOM-stripped read).
+    const BOM = String.fromCharCode(0xfeff);
+    await ctx.fs.writeAtomic("e/bom.ts", `${BOM}const k = 1;\n`);
+    await ce.handler({ path: "e/bom.ts", oldString: "const k = 1;", newString: "const k = 2;" });
+    check("code_edit preserves BOM via raw read", (await ctx.fs.readRaw("e/bom.ts")).content === `${BOM}const k = 2;\n`);
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
