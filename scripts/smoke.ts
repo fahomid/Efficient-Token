@@ -53,6 +53,7 @@ import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
+import { traceLocatePlugin } from "../src/plugins/trace-locate/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
 export class Greeter {
@@ -793,6 +794,17 @@ async function main(): Promise<void> {
     const mkHack = textOf(await mk.handler({ path: "mk", tags: ["HACK"] }));
     check("marker_inventory custom tags", mkHack.includes("HACK (1)") && !mkHack.includes("TODO ("));
     check("marker_inventory none", textOf(await mk.handler({ path: "mk", tags: ["NOPEMARK"] })).includes("No markers"));
+
+    // --- trace_locate plugin --------------------------------------------
+    await ctx.fs.writeAtomic("tl/app.ts", "export function boom() {\n  throw new Error('x');\n}\n");
+    const tlPlugin = traceLocatePlugin();
+    await tlPlugin.init?.(ctx);
+    const tl = tool(tlPlugin, "trace_locate");
+    const trace = "Error: x\n    at boom (tl/app.ts:2:9)\n    at Object.<anonymous> (/external/node_modules/foo/index.js:99:1)\n";
+    const tlRes = textOf(await tl.handler({ trace }));
+    check("trace_locate resolves workspace frames", tlRes.includes("tl/app.ts:2") && tlRes.includes("throw new Error") && tlRes.includes("boom"));
+    check("trace_locate skips external frames", !tlRes.includes("node_modules/foo"));
+    check("trace_locate none when no workspace paths", textOf(await tl.handler({ trace: "at x (/nowhere/abc.js:1:1)" })).includes("No workspace source"));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");
