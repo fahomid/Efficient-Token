@@ -26,6 +26,7 @@ import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
+import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 
 const SAMPLE_TS = `/** A greeter. */
 export class Greeter {
@@ -430,6 +431,25 @@ async function main(): Promise<void> {
 
     const r3 = await fr.handler({ symbol: "WIDGET", path: "refs", caseInsensitive: true });
     check("find_references case-insensitive", textOf(r3).includes("refs/lib.ts:1"));
+
+    // --- repo_map plugin ------------------------------------------------
+    await ctx.fs.writeAtomic("rmap/api.ts", "export class Service {\n  run() {}\n}\nexport function helper() {}\nexport interface Opts { x: number }\n");
+    await ctx.fs.writeAtomic("rmap/util/str.ts", "export function trimAll(s: string) { return s.trim(); }\n");
+    await ctx.fs.writeAtomic("rmap/data.json", "{ \"a\": 1 }\n");
+    const mapPlugin = repoMapPlugin();
+    await mapPlugin.init?.(ctx);
+    const rm = tool(mapPlugin, "repo_map");
+
+    const m1 = await rm.handler({ path: "rmap" });
+    const m1t = textOf(m1);
+    check("repo_map lists top-level symbols", !m1.isError && m1t.includes("class Service") && m1t.includes("function helper") && m1t.includes("interface Opts"));
+    check("repo_map excludes nested members (no run())", !m1t.includes("run"));
+    check("repo_map groups by directory", m1t.includes("rmap/") && m1t.includes("rmap/util/") && m1t.includes("api.ts") && m1t.includes("str.ts"));
+    check("repo_map lists non-grammar files bare", /data\.json(?!.*—)/.test(m1t) || (m1t.includes("data.json") && !m1t.includes("data.json —")));
+    check("repo_map header reports counts", /repo map — \d+ file\(s\), \d+ top-level symbol/.test(m1t));
+
+    const m2 = await rm.handler({ path: "rmap", maxTokens: 1 });
+    check("repo_map respects token budget", textOf(m2).includes("truncated"));
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

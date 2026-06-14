@@ -21,6 +21,7 @@ import { codeSearchPlugin } from "./plugins/code-search/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
 import { findReferencesPlugin } from "./plugins/find-references/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
+import { repoMapPlugin } from "./plugins/repo-map/index.js";
 
 const VERSION = "0.1.0";
 
@@ -34,6 +35,7 @@ const plugins: Plugin[] = [
   codeReadPlugin(),
   codeSearchPlugin(),
   findReferencesPlugin(),
+  repoMapPlugin(),
   codeEditPlugin(),
   codeWritePlugin(),
 ];
