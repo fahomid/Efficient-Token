@@ -32,6 +32,7 @@ import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
 import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
+import { conflictDigestPlugin } from "../src/plugins/conflict-digest/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { globPlugin } from "../src/plugins/glob/index.js";
@@ -874,6 +875,49 @@ async function main(): Promise<void> {
       check("symbol_history unknown symbol errors", (await sh.handler({ path: "mod.ts", symbol: "zzz" })).isError === true);
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
+    }
+
+    // --- conflict_digest plugin (isolated repo with a real merge conflict)
+    const conflictRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-conflict-"));
+    try {
+      const gc = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: conflictRoot });
+      await gc(["init", "-q"]);
+      await gc(["config", "user.email", "t@example.com"]);
+      await gc(["config", "user.name", "Test"]);
+      await gc(["config", "commit.gpgsign", "false"]);
+      await fsp.writeFile(path.join(conflictRoot, "c.txt"), "top\nMIDDLE\nbottom\n");
+      await gc(["add", "c.txt"]);
+      await gc(["commit", "-q", "-m", "base"]);
+      await gc(["checkout", "-q", "-b", "other"]);
+      await fsp.writeFile(path.join(conflictRoot, "c.txt"), "top\ntheirs-mid\nbottom\n");
+      await gc(["commit", "-q", "-am", "theirs"]);
+      await gc(["checkout", "-q", "-"]);
+      await fsp.writeFile(path.join(conflictRoot, "c.txt"), "top\nours-mid\nbottom\n");
+      await gc(["commit", "-q", "-am", "ours"]);
+      try {
+        await gc(["merge", "other"]);
+      } catch {
+        /* merge conflict expected (non-zero exit) */
+      }
+
+      const ccPaths = new PathSandbox(conflictRoot);
+      const ccCtx: CoreContext = {
+        ...ctx,
+        config: { ...config, root: conflictRoot },
+        paths: ccPaths,
+        fs: new SafeFs(ccPaths, config.maxFileBytes),
+        scan: new Scanner(ccPaths),
+      };
+      const cdPlugin = conflictDigestPlugin();
+      await cdPlugin.init?.(ccCtx);
+      const cd = tool(cdPlugin, "conflict_digest");
+      const cdt = textOf(await cd.handler({}));
+      check("conflict_digest lists conflicted files", cdt.includes("c.txt") && cdt.includes("conflict(s)"));
+      check("conflict_digest shows ours and theirs verbatim", cdt.includes("ours-mid") && cdt.includes("theirs-mid") && cdt.includes("--- ours ---") && cdt.includes("--- theirs ---"));
+      await gc(["merge", "--abort"]);
+      check("conflict_digest reports none when clean", textOf(await cd.handler({})).includes("No unresolved merge conflicts"));
+    } finally {
+      await fsp.rm(conflictRoot, { recursive: true, force: true });
     }
 
     // --- code_check plugin ----------------------------------------------
