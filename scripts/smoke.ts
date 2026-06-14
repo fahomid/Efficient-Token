@@ -41,6 +41,7 @@ import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { globPlugin } from "../src/plugins/glob/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
+import { importMapPlugin } from "../src/plugins/import-map/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "../src/plugins/marker-inventory/index.js";
@@ -805,6 +806,19 @@ async function main(): Promise<void> {
     check("trace_locate resolves workspace frames", tlRes.includes("tl/app.ts:2") && tlRes.includes("throw new Error") && tlRes.includes("boom"));
     check("trace_locate skips external frames", !tlRes.includes("node_modules/foo"));
     check("trace_locate none when no workspace paths", textOf(await tl.handler({ trace: "at x (/nowhere/abc.js:1:1)" })).includes("No workspace source"));
+
+    // --- import_map plugin ----------------------------------------------
+    await ctx.fs.writeAtomic("im/b.ts", "export const b = 2;\n");
+    await ctx.fs.writeAtomic("im/a.ts", 'import { b } from "./b.js";\nimport fs from "node:fs";\nexport const a = b + Number(fs);\n');
+    await ctx.fs.writeAtomic("im/c.ts", 'import { b } from "./b.js";\nexport const c = b;\n');
+    const imPl = importMapPlugin();
+    await imPl.init?.(ctx);
+    const im = tool(imPl, "import_map");
+    const imImports = textOf(await im.handler({ path: "im/a.ts", direction: "imports" }));
+    check("import_map lists imports (workspace + external)", imImports.includes("./b.js") && imImports.includes("im/b") && imImports.includes("node:fs") && imImports.includes("[external]"));
+    const imImporters = textOf(await im.handler({ path: "im/b.ts", direction: "importers" }));
+    check("import_map finds importers", imImporters.includes("im/a.ts:1") && imImporters.includes("im/c.ts:1") && imImporters.includes("importers (2)"));
+    check("import_map both directions", textOf(await im.handler({ path: "im/a.ts" })).includes("imports (") && textOf(await im.handler({ path: "im/a.ts" })).includes("importers"));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");

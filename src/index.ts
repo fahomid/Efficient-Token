@@ -32,6 +32,7 @@ import { findReferencesPlugin } from "./plugins/find-references/index.js";
 import { globPlugin } from "./plugins/glob/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
+import { importMapPlugin } from "./plugins/import-map/index.js";
 import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { lineBlamePlugin } from "./plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "./plugins/marker-inventory/index.js";
@@ -66,6 +67,7 @@ const plugins: Plugin[] = [
   symbolFindPlugin(),
   callSitesPlugin(),
   markerInventoryPlugin(),
+  importMapPlugin(),
   codeContextPlugin(),
   repoMapPlugin(),
   diffDigestPlugin(),
