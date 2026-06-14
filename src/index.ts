@@ -12,10 +12,12 @@ import { SafeFs } from "./services/fs.js";
 import { createEntitlement } from "./services/license.js";
 import { createLogger } from "./services/logger.js";
 import { PathSandbox } from "./services/paths.js";
+import { Scanner } from "./services/scan.js";
 
 import { codeEditPlugin } from "./plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "./plugins/code-outline/index.js";
 import { codeReadPlugin } from "./plugins/code-read/index.js";
+import { codeSearchPlugin } from "./plugins/code-search/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 
@@ -29,6 +31,7 @@ const plugins: Plugin[] = [
   healthPlugin(),
   codeOutlinePlugin(),
   codeReadPlugin(),
+  codeSearchPlugin(),
   codeEditPlugin(),
   codeWritePlugin(),
 ];
@@ -43,6 +46,7 @@ async function main(): Promise<void> {
     paths,
     fs: new SafeFs(paths, config.maxFileBytes),
     ast: new AstService(log),
+    scan: new Scanner(paths),
     budget: new TokenBudgeter(),
     license: createEntitlement(),
     log,

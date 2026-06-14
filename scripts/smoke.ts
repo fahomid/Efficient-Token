@@ -18,9 +18,11 @@ import { SafeFs } from "../src/services/fs.js";
 import { createEntitlement } from "../src/services/license.js";
 import { createLogger } from "../src/services/logger.js";
 import { PathSandbox } from "../src/services/paths.js";
+import { Scanner } from "../src/services/scan.js";
 import { codeEditPlugin } from "../src/plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
 import { codeReadPlugin } from "../src/plugins/code-read/index.js";
+import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 
@@ -98,6 +100,7 @@ async function main(): Promise<void> {
       paths,
       fs: new SafeFs(paths, config.maxFileBytes),
       ast: new AstService(log),
+      scan: new Scanner(paths),
       budget: new TokenBudgeter(),
       license: createEntitlement(),
       log,
@@ -368,6 +371,43 @@ async function main(): Promise<void> {
     await ctx.fs.writeAtomic("e/bom.ts", `${BOM}const k = 1;\n`);
     await ce.handler({ path: "e/bom.ts", oldString: "const k = 1;", newString: "const k = 2;" });
     check("code_edit preserves BOM via raw read", (await ctx.fs.readRaw("e/bom.ts")).content === `${BOM}const k = 2;\n`);
+
+    // --- code_search plugin (Grep semantics) ----------------------------
+    await ctx.fs.writeAtomic("srch/a.ts", "export function alpha() {}\nconst beta = 1;\n");
+    await ctx.fs.writeAtomic("srch/b.ts", "export class Gamma {}\n");
+    await ctx.fs.writeAtomic("srch/c.txt", "alpha plain text\n");
+    const searchPlugin = codeSearchPlugin();
+    await searchPlugin.init?.(ctx);
+    const cs = tool(searchPlugin, "code_search");
+
+    const fwm = await cs.handler({ pattern: "alpha", path: "srch" });
+    check("code_search files_with_matches", !fwm.isError && textOf(fwm).includes("srch/a.ts") && textOf(fwm).includes("srch/c.txt") && !textOf(fwm).includes("srch/b.ts"));
+
+    const globbed = await cs.handler({ pattern: "alpha", path: "srch", glob: "*.ts" });
+    check("code_search glob filter", textOf(globbed).includes("srch/a.ts") && !textOf(globbed).includes("srch/c.txt"));
+
+    const typed = await cs.handler({ pattern: "class", path: "srch", type: "ts" });
+    check("code_search type filter", textOf(typed).includes("srch/b.ts") && !textOf(typed).includes(".txt"));
+
+    const contentRes = await cs.handler({ pattern: "beta", path: "srch", outputMode: "content" });
+    check("code_search content mode", textOf(contentRes).includes("srch/a.ts:2:const beta = 1;"));
+
+    const countRes = await cs.handler({ pattern: "alpha", path: "srch", outputMode: "count" });
+    check("code_search count mode", textOf(countRes).includes("srch/a.ts: 1") && textOf(countRes).includes("srch/c.txt: 1"));
+
+    const ci = await cs.handler({ pattern: "ALPHA", path: "srch", caseInsensitive: true });
+    check("code_search case-insensitive", textOf(ci).includes("srch/a.ts"));
+
+    const ctxRes = await cs.handler({ pattern: "beta", path: "srch", outputMode: "content", context: 1 });
+    check("code_search context lines", textOf(ctxRes).includes("srch/a.ts-1-") && textOf(ctxRes).includes("srch/a.ts:2:"));
+
+    const none = await cs.handler({ pattern: "zzzznope", path: "srch" });
+    check("code_search no match", textOf(none).includes("No matches"));
+
+    const badRe = await cs.handler({ pattern: "(", path: "srch" });
+    check("code_search invalid regex", badRe.isError === true && textOf(badRe).includes("invalid regex"));
+
+    check("code_search skips node_modules implicitly", !textOf(await cs.handler({ pattern: "alpha" })).includes("node_modules"));
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }
