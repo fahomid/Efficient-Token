@@ -380,6 +380,51 @@ async function main(): Promise<void> {
     await ce.handler({ path: "e/bom.ts", oldString: "const k = 1;", newString: "const k = 2;" });
     check("code_edit preserves BOM via raw read", (await ctx.fs.readRaw("e/bom.ts")).content === `${BOM}const k = 2;\n`);
 
+    // --- syntax recovery guard (code_edit + code_write) -----------------
+    const GOOD = "export function f() {\n  return 1;\n}\n";
+    await ctx.fs.writeAtomic("syn/f.ts", GOOD);
+    const broke = await ce.handler({ path: "syn/f.ts", oldString: "  return 1;\n}", newString: "  return 1;" });
+    check("code_edit refuses syntax-breaking edit", broke.isError === true && textOf(broke).includes("syntax error"));
+    check("code_edit left file unchanged after refusal", (await ctx.fs.read("syn/f.ts")).content === GOOD);
+    const forced = await ce.handler({ path: "syn/f.ts", oldString: "  return 1;\n}", newString: "  return 1;", validate: false });
+    check("code_edit validate:false overrides guard", !forced.isError && !(await ctx.fs.read("syn/f.ts")).content.includes("}"));
+
+    await ctx.fs.writeAtomic("syn/g.ts", "export const x = 1;\n");
+    const validEdit = await ce.handler({ path: "syn/g.ts", oldString: "= 1", newString: "= 2" });
+    check("code_edit allows syntactically-valid edit", !validEdit.isError && (await ctx.fs.read("syn/g.ts")).content.includes("= 2"));
+
+    await ctx.fs.writeAtomic("syn/broken.ts", "export function h() {\n  return 1;\n"); // already missing }
+    const fixBroken = await ce.handler({ path: "syn/broken.ts", oldString: "return 1;\n", newString: "return 1;\n}\n" });
+    check("code_edit allows edits to an already-broken file", !fixBroken.isError);
+
+    await ctx.fs.writeAtomic("syn/n.txt", "hello\n");
+    const txtEdit = await ce.handler({ path: "syn/n.txt", oldString: "hello", newString: "((( unbalanced" });
+    check("code_edit skips validation for non-grammar files", !txtEdit.isError && (await ctx.fs.read("syn/n.txt")).content.includes("((("));
+
+    const cwBroke = await cw.handler({ path: "syn/w.ts", content: "export function w() {\n  return 1;\n" });
+    check("code_write refuses syntactically-broken content", cwBroke.isError === true && textOf(cwBroke).includes("syntax error"));
+    check("code_write did not create the broken file", !(await ctx.fs.exists("syn/w.ts")));
+    const cwForced = await cw.handler({ path: "syn/w.ts", content: "export function w() {\n  return 1;\n", validate: false });
+    check("code_write validate:false overrides", !cwForced.isError && (await ctx.fs.exists("syn/w.ts")));
+    const cwOk = await cw.handler({ path: "syn/ok.ts", content: "export const y = 2;\n" });
+    check("code_write allows valid content", !cwOk.isError && (await ctx.fs.read("syn/ok.ts")).content.includes("y = 2"));
+
+    // Valid-but-newer TS must NOT be falsely blocked (grammar emits ERROR, not MISSING).
+    await ctx.fs.writeAtomic("syn/modern.ts", "class C {\n  x = 1;\n}\n");
+    const accessorEdit = await ce.handler({ path: "syn/modern.ts", oldString: "  x = 1;", newString: "  accessor x = 1;" });
+    check("code_edit allows valid `accessor` field (no false positive)", !accessorEdit.isError && (await ctx.fs.read("syn/modern.ts")).content.includes("accessor x = 1"));
+    await ctx.fs.writeAtomic("syn/variance.ts", "export interface Box<T> { v: T }\n");
+    const varianceEdit = await ce.handler({ path: "syn/variance.ts", oldString: "Box<T>", newString: "Box<out T>" });
+    check("code_edit allows valid in/out variance (no false positive)", !varianceEdit.isError && (await ctx.fs.read("syn/variance.ts")).content.includes("Box<out T>"));
+
+    // code_write: an UNREADABLE (oversize) existing baseline must not be faked clean.
+    await ctx.fs.writeAtomic("syn/big.ts", "export function big( {\n"); // already broken
+    const tinyCtx: CoreContext = { ...ctx, fs: new SafeFs(new PathSandbox(root), 5) }; // 5-byte read cap
+    const tinyWrite = codeWritePlugin();
+    await tinyWrite.init?.(tinyCtx);
+    const oversize = await tool(tinyWrite, "code_write").handler({ path: "syn/big.ts", content: "export function big( {\n  still broken\n" });
+    check("code_write skips guard when existing baseline is unreadable", !oversize.isError);
+
     // --- code_search plugin (Grep semantics) ----------------------------
     await ctx.fs.writeAtomic("srch/a.ts", "export function alpha() {}\nconst beta = 1;\n");
     await ctx.fs.writeAtomic("srch/b.ts", "export class Gamma {}\n");

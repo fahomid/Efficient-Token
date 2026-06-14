@@ -17,6 +17,19 @@ export interface SymbolInfo {
   hasDoc: boolean;
 }
 
+/** A syntax fault (ERROR or MISSING node) found by the parser. */
+export interface SyntaxIssue {
+  kind: "error" | "missing";
+  line: number; // 1-based
+  column: number; // 1-based
+  text: string; // short snippet / missing token
+}
+
+/** Render syntax issues for a tool message. */
+export function formatSyntaxIssues(issues: readonly SyntaxIssue[]): string {
+  return issues.map((i) => `  ${i.line}:${i.column}  ${i.kind} ${i.text}`).join("\n");
+}
+
 const require = createRequire(import.meta.url);
 /** Directory holding `tree-sitter-<grammar>.wasm` files from tree-sitter-wasms. */
 const WASM_DIR = path.join(
@@ -285,6 +298,65 @@ export class AstService {
     const all = await this.outline(filePath, code);
     if (all === undefined) return undefined;
     return all.filter((s) => s.name === name);
+  }
+
+  /**
+   * Syntax faults (ERROR / MISSING nodes) in `code`.
+   * @returns `undefined` if the file type has no grammar; `[]` if it parses clean.
+   */
+  async findSyntaxErrors(filePath: string, code: string): Promise<SyntaxIssue[] | undefined> {
+    return this.run(filePath, code, (root, src) => {
+      const out: SyntaxIssue[] = [];
+      if (root.hasError) this.collectErrors(root, src, out);
+      return out;
+    });
+  }
+
+  /**
+   * Syntax errors that an edit would INTRODUCE: errors present in `newContent`
+   * but not in `oldContent`. Returns `[]` when the file type has no grammar, the
+   * new content is clean, or the old content was ALREADY broken (so a fix isn't
+   * blocked). This is the deterministic guard behind code_edit / code_write.
+   */
+  async introducedSyntaxErrors(
+    filePath: string,
+    oldContent: string,
+    newContent: string,
+  ): Promise<SyntaxIssue[]> {
+    const after = await this.findSyntaxErrors(filePath, newContent);
+    if (after === undefined) return []; // no grammar
+    // Block ONLY on introduced MISSING nodes (an absent/unclosed token, e.g. an
+    // unbalanced bracket). Generic ERROR nodes are deliberately NOT blocked:
+    // tree-sitter emits them for valid-but-newer syntax the bundled grammar does
+    // not know yet (e.g. TS `accessor` fields, `in`/`out` variance), which would
+    // be false positives that wrongly refuse correct edits.
+    const afterMissing = after.filter((i) => i.kind === "missing");
+    if (afterMissing.length === 0) return [];
+    const before = await this.findSyntaxErrors(filePath, oldContent);
+    if (before === undefined) return [];
+    if (before.some((i) => i.kind === "missing")) return []; // already had missing tokens
+    return afterMissing;
+  }
+
+  /** Collect ERROR/MISSING nodes (capped + depth-bounded), into error subtrees. */
+  private collectErrors(node: Node, src: string, out: SyntaxIssue[], depth = 0): void {
+    if (depth > 200) return; // defensive bound against pathological nesting
+    for (let i = 0; i < node.childCount && out.length < 20; i++) {
+      const c = node.child(i);
+      if (!c) continue;
+      if (c.isError || c.isMissing) {
+        out.push({
+          kind: c.isMissing ? "missing" : "error",
+          line: c.startPosition.row + 1,
+          column: c.startPosition.column + 1,
+          text: c.isMissing
+            ? `\`${c.type || "token"}\``
+            : truncate(src.slice(c.startIndex, c.endIndex).replace(/\s+/g, " ").trim() || c.type, 40),
+        });
+        continue; // the whole node is the fault; don't descend into it
+      }
+      if (c.hasError) this.collectErrors(c, src, out, depth + 1);
+    }
   }
 
   /** Load (and cache) the grammar for a file path. */

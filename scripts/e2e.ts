@@ -127,6 +127,13 @@ async function main(): Promise<void> {
     check("code_edit applies over the wire", !edited.isError && resultText(edited).includes("replacement"));
     const confirm = await client.callTool({ name: "code_read", arguments: { path: "gen/hello.txt" } });
     check("edit persisted", resultText(confirm).includes("TWO") && !resultText(confirm).includes("| two"));
+
+    // syntax recovery guard over the wire: a brace-breaking edit is refused and rolled back
+    await client.callTool({ name: "code_write", arguments: { path: "gen/g.ts", content: "export function g() {\n  return 1;\n}\n" } });
+    const breakEdit = await client.callTool({ name: "code_edit", arguments: { path: "gen/g.ts", oldString: "  return 1;\n}", newString: "  return 1;" } });
+    check("code_edit syntax guard rejects over the wire", breakEdit.isError === true && resultText(breakEdit).includes("syntax error"));
+    const stillValid = await client.callTool({ name: "code_read", arguments: { path: "gen/g.ts", symbol: "g" } });
+    check("file unchanged after guarded rejection", resultText(stillValid).includes("return 1;") && resultText(stillValid).includes("}"));
     const editEscape = await client.callTool({
       name: "code_edit",
       arguments: { path: "../../../etc/hosts", oldString: "a", newString: "b" },

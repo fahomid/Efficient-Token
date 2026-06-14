@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { numberLines, splitLines } from "../../core/text.js";
+import { formatSyntaxIssues } from "../../services/ast.js";
 
 /**
  * `code_edit` — exact string replacement in a file, matching Claude's `Edit`
@@ -43,6 +44,10 @@ export function codeEditPlugin(): Plugin {
             .boolean()
             .optional()
             .describe("Replace EVERY occurrence instead of requiring a unique match."),
+          validate: z
+            .boolean()
+            .optional()
+            .describe("Reject the edit if it would introduce a syntax error into a clean file (default true). Set false to write anyway."),
         },
         handler: async (args) => {
           try {
@@ -80,6 +85,18 @@ export function codeEditPlugin(): Plugin {
               newContent =
                 content.slice(0, idx) + newString + content.slice(idx + oldString.length);
             }
+
+            // Recovery guard: never persist an edit that breaks a clean file.
+            if (args.validate !== false) {
+              const introduced = await ctx.ast.introducedSyntaxErrors(p, content, newContent);
+              if (introduced.length > 0) {
+                return fail(
+                  `code_edit refused: this change would introduce ${introduced.length} syntax error(s) in ${rel}. ` +
+                    `Fix the edit and retry, or set validate=false to override.\n${formatSyntaxIssues(introduced)}`,
+                );
+              }
+            }
+
             await ctx.fs.writeAtomic(p, newContent);
 
             const n = replaceAll ? count : 1;

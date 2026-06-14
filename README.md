@@ -58,8 +58,8 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `repo_map` | A token-bounded **table of contents**: the file tree grouped by directory, with each source file's top-level symbols (classes/functions/types). Orient in a codebase without reading files. *(read-only)* |
 | `diff_digest` | Review git changes as **hunks only** (or a `--stat` summary / file list) — `ref`/`staged`/`path` scoped — instead of reading whole changed files. Read-only git. *(read-only)* |
 | `code_check` | Run one of the project's **own** `package.json` scripts (test/build/lint/typecheck) and return a one-line PASS or **bounded failure output** — never the whole log. Allowlisted to defined scripts; no arbitrary commands. *(executes)* |
-| `code_edit` | Exact find-and-replace in a file (Claude `Edit` semantics): `oldString` must match **verbatim** and be **unique** unless `replaceAll=true`; refuses missing/ambiguous matches; atomic write. *(mutating)* |
-| `code_write` | Create or fully overwrite a file (Claude `Write` semantics); creates parent dirs; atomic write. *(mutating)* |
+| `code_edit` | Exact find-and-replace in a file (Claude `Edit` semantics): `oldString` must match **verbatim** and be **unique** unless `replaceAll=true`; refuses missing/ambiguous matches; atomic write. **Refuses (and never writes) a change that would leave an unclosed/unbalanced token** (e.g. a missing `}`) — reports the location so you can retry — unless `validate=false`. *(mutating)* |
+| `code_write` | Create or fully overwrite a file (Claude `Write` semantics); creates parent dirs; atomic write. Same **syntax-error recovery guard** as `code_edit` (`validate=false` to override). *(mutating)* |
 
 Read tools declare `readOnlyHint`; the two mutating tools declare `destructiveHint` so hosts can gate them. All writes stay inside the workspace root (symlink/ADS-safe) and are atomic (temp + rename).
 
