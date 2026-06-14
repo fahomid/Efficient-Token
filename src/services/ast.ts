@@ -14,6 +14,10 @@ export interface SymbolInfo {
   signature: string;
   startLine: number;
   endLine: number;
+  /** Char offset of the definition's first char in the source (for exact splices). */
+  startIndex: number;
+  /** Char offset just past the definition's last char. */
+  endIndex: number;
   hasDoc: boolean;
 }
 
@@ -491,14 +495,40 @@ export class AstService {
 
   /** Build a {@link SymbolInfo} (without `container`) for `node`. */
   private symbolAt(node: Node, kind: string, name: string, src: string): SymbolInfo {
+    const span = this.outerSpan(node);
     return {
       kind,
       name,
       signature: this.signatureOf(node, src),
       startLine: node.startPosition.row + 1,
       endLine: node.endPosition.row + 1,
+      startIndex: span.startIndex,
+      endIndex: span.endIndex,
       hasDoc: this.hasDoc(node),
     };
+  }
+
+  /**
+   * The char span of a definition INCLUDING its leading `export`/decorator/
+   * `declare` wrappers, so an exact splice replaces the whole declaration as it
+   * appears in source. A SOLE `const`/`var` binding expands to its declaration
+   * statement; one of SEVERAL bindings stays the single declarator (so replacing
+   * one never clobbers its siblings).
+   */
+  private outerSpan(node: Node): { startIndex: number; endIndex: number } {
+    let top: Node = node;
+    if (top.type === "variable_declarator") {
+      const decl = top.parent;
+      if (decl && (decl.type === "lexical_declaration" || decl.type === "variable_declaration")) {
+        let declarators = 0;
+        for (let i = 0; i < decl.namedChildCount; i++) {
+          if (decl.namedChild(i)?.type === "variable_declarator") declarators++;
+        }
+        if (declarators === 1) top = decl;
+      }
+    }
+    while (top.parent && DECL_WRAPPERS.has(top.parent.type)) top = top.parent;
+    return { startIndex: top.startIndex, endIndex: top.endIndex };
   }
 
   /**

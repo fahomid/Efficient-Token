@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the twenty-two free tools",
-      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,json_query,note_read,note_write,project_rename,read_many,repo_map,review_branch,symbol_find",
+      "tools/list returns the twenty-three free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,json_query,note_read,note_write,project_rename,read_many,replace_symbol,repo_map,review_branch,symbol_find",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     );
     check(
       "write tools annotated destructive (not read-only)",
-      ["code_edit", "code_write", "apply_patch"].every(
+      ["code_edit", "code_write", "apply_patch", "replace_symbol"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === false && byName.get(n)?.annotations?.destructiveHint === true,
       ),
     );
@@ -154,6 +154,15 @@ async function main(): Promise<void> {
       arguments: { path: "../../../etc/hosts", oldString: "a", newString: "b" },
     });
     check("code_edit blocks path traversal over the wire", editEscape.isError === true);
+
+    // replace_symbol: rewrite a whole definition by name over the wire
+    const rsWire = await client.callTool({
+      name: "replace_symbol",
+      arguments: { path: "sample.ts", symbol: "add", newSource: "export function add(a: number, b: number): number {\n  return a + b + 1;\n}" },
+    });
+    check("replace_symbol rewrites a definition over the wire", !rsWire.isError && resultText(rsWire).includes("Replaced function add"));
+    const rsConfirm = await client.callTool({ name: "code_read", arguments: { path: "sample.ts", symbol: "add" } });
+    check("replace_symbol persisted", resultText(rsConfirm).includes("return a + b + 1;"));
 
     const searched = await client.callTool({
       name: "code_search",

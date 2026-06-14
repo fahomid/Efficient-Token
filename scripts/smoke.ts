@@ -41,6 +41,7 @@ import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
 import { readManyPlugin } from "../src/plugins/read-many/index.js";
+import { replaceSymbolPlugin } from "../src/plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
@@ -442,6 +443,33 @@ async function main(): Promise<void> {
     await tinyWrite.init?.(tinyCtx);
     const oversize = await tool(tinyWrite, "code_write").handler({ path: "syn/big.ts", content: "export function big( {\n  still broken\n" });
     check("code_write skips guard when existing baseline is unreadable", !oversize.isError);
+
+    // --- replace_symbol plugin ------------------------------------------
+    const rsPlugin = replaceSymbolPlugin();
+    await rsPlugin.init?.(ctx);
+    const rs = tool(rsPlugin, "replace_symbol");
+    const RS_SRC = "export function add(a: number, b: number): number {\n  return a + b;\n}\n\nexport function sub(a: number, b: number): number {\n  return a - b;\n}\n";
+    await ctx.fs.writeAtomic("rs/m.ts", RS_SRC);
+    const rsOk = await rs.handler({ path: "rs/m.ts", symbol: "add", newSource: "export function add(a: number, b: number): number {\n  return a + b + 0;\n}" });
+    check("replace_symbol replaces a whole definition",
+      !rsOk.isError && (await ctx.fs.read("rs/m.ts")).content === "export function add(a: number, b: number): number {\n  return a + b + 0;\n}\n\nexport function sub(a: number, b: number): number {\n  return a - b;\n}\n",
+      (await ctx.fs.read("rs/m.ts")).content);
+    const rsMiss = await rs.handler({ path: "rs/m.ts", symbol: "nope", newSource: "x" });
+    check("replace_symbol reports missing symbol + lists names", rsMiss.isError === true && textOf(rsMiss).includes("not found") && textOf(rsMiss).includes("add"));
+    const rsBreak = await rs.handler({ path: "rs/m.ts", symbol: "sub", newSource: "export function sub(a: number, b: number): number {\n  return a - b;" });
+    check("replace_symbol refuses syntax-breaking newSource", rsBreak.isError === true && textOf(rsBreak).includes("syntax error"));
+    await ctx.fs.writeAtomic("rs/amb.ts", "class A {\n  run() { return 1; }\n}\nclass B {\n  run() { return 2; }\n}\n");
+    const rsAmb = await rs.handler({ path: "rs/amb.ts", symbol: "run", newSource: "run() { return 9; }" });
+    check("replace_symbol refuses ambiguous name", rsAmb.isError === true && textOf(rsAmb).includes("ambiguous"));
+    const rsByContainer = await rs.handler({ path: "rs/amb.ts", symbol: "run", container: "B", newSource: "run() { return 9; }" });
+    const rsAmbContent = (await ctx.fs.read("rs/amb.ts")).content;
+    check("replace_symbol disambiguates by container", !rsByContainer.isError && rsAmbContent.includes("return 9") && rsAmbContent.includes("return 1"));
+    const BOM2 = String.fromCharCode(0xfeff);
+    await ctx.fs.writeAtomic("rs/bom.ts", `${BOM2}export function z() {\n  return 1;\n}\n`);
+    await rs.handler({ path: "rs/bom.ts", symbol: "z", newSource: "export function z() {\n  return 2;\n}" });
+    check("replace_symbol preserves BOM", (await ctx.fs.readRaw("rs/bom.ts")).content === `${BOM2}export function z() {\n  return 2;\n}\n`, (await ctx.fs.readRaw("rs/bom.ts")).content);
+    await ctx.fs.writeAtomic("rs/plain.txt", "hello\n");
+    check("replace_symbol rejects non-grammar file", (await rs.handler({ path: "rs/plain.txt", symbol: "x", newSource: "y" })).isError === true);
 
     // --- apply_patch plugin (atomic multi-edit) -------------------------
     const apPlugin = applyPatchPlugin();
