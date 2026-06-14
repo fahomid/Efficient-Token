@@ -71,14 +71,14 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the twenty-three free tools",
-      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,json_query,note_read,note_write,project_rename,read_many,replace_symbol,repo_map,review_branch,symbol_find",
+      "tools/list returns the twenty-four free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,glob,grep_context,health,json_query,note_read,note_write,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
     check(
       "read tools annotated read-only",
-      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query"].every(
+      ["health", "code_outline", "code_read", "code_search", "find_references", "repo_map", "diff_digest", "grep_context", "code_context", "review_branch", "glob", "symbol_find", "read_many", "json_query", "read_at_rev"].every(
         (n) => byName.get(n)?.annotations?.readOnlyHint === true && byName.get(n)?.annotations?.openWorldHint === false,
       ),
     );
@@ -205,6 +205,8 @@ async function main(): Promise<void> {
     check("diff_digest responds gracefully (non-repo) over the wire", dd.isError === true && resultText(dd).includes("not a git repository"));
     const rb = await client.callTool({ name: "review_branch", arguments: {} });
     check("review_branch responds gracefully (non-repo) over the wire", rb.isError === true && resultText(rb).includes("not a git repository"));
+    const rar = await client.callTool({ name: "read_at_rev", arguments: { path: "sample.ts", ref: "HEAD" } });
+    check("read_at_rev responds gracefully (non-repo) over the wire", rar.isError === true && resultText(rar).includes("not a git repository"));
 
     const checked = await client.callTool({ name: "code_check", arguments: { script: "ok" } });
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));

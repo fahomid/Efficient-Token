@@ -40,6 +40,7 @@ import { healthPlugin } from "../src/plugins/health/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { notePlugin } from "../src/plugins/note/index.js";
 import { projectRenamePlugin } from "../src/plugins/project-rename/index.js";
+import { readAtRevPlugin } from "../src/plugins/read-at-rev/index.js";
 import { readManyPlugin } from "../src/plugins/read-many/index.js";
 import { replaceSymbolPlugin } from "../src/plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
@@ -844,6 +845,19 @@ async function main(): Promise<void> {
       await rbPlugin.init?.(gctx);
       const rbt = textOf(await tool(rbPlugin, "review_branch").handler({}));
       check("review_branch maps changes to symbols", rbt.includes("mod.ts") && rbt.includes("~ function alpha") && !rbt.includes("~ function beta"));
+
+      // read_at_rev: historical code_read (HEAD has f.ts=a2/b3 and mod.ts alpha=1; working tree has alpha=100)
+      const rarPlugin = readAtRevPlugin();
+      await rarPlugin.init?.(gctx);
+      const rar = tool(rarPlugin, "read_at_rev");
+      const rarHead = textOf(await rar.handler({ path: "f.ts", ref: "HEAD" }));
+      check("read_at_rev reads whole file at HEAD", rarHead.includes("export const a = 2;") && rarHead.includes("export const b = 3;") && rarHead.includes("@"));
+      const rarOld = textOf(await rar.handler({ path: "f.ts", ref: "HEAD~1" }));
+      check("read_at_rev reads an older revision", rarOld.includes("export const a = 1;") && !rarOld.includes("b = 3"));
+      const rarSym = textOf(await rar.handler({ path: "mod.ts", ref: "HEAD", symbol: "alpha" }));
+      check("read_at_rev reads a symbol from the committed rev (not working tree)", rarSym.includes("return 1;") && !rarSym.includes("return 100;"));
+      check("read_at_rev invalid ref rejected", (await rar.handler({ path: "f.ts", ref: "--evil" })).isError === true);
+      check("read_at_rev missing path at rev errors", (await rar.handler({ path: "nope.ts", ref: "HEAD" })).isError === true);
     } finally {
       await fsp.rm(gitRoot, { recursive: true, force: true });
     }

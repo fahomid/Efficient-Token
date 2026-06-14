@@ -31,6 +31,7 @@ import { healthPlugin } from "./plugins/health/index.js";
 import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { notePlugin } from "./plugins/note/index.js";
 import { projectRenamePlugin } from "./plugins/project-rename/index.js";
+import { readAtRevPlugin } from "./plugins/read-at-rev/index.js";
 import { readManyPlugin } from "./plugins/read-many/index.js";
 import { replaceSymbolPlugin } from "./plugins/replace-symbol/index.js";
 import { repoMapPlugin } from "./plugins/repo-map/index.js";
@@ -48,6 +49,7 @@ const plugins: Plugin[] = [
   codeOutlinePlugin(),
   codeReadPlugin(),
   readManyPlugin(),
+  readAtRevPlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),

@@ -29,3 +29,13 @@ export async function gitOk(cwd: string, args: string[]): Promise<boolean> {
 export function isSafeRef(ref: string): boolean {
   return ref.trim() !== "" && !ref.startsWith("-");
 }
+
+/** Abbreviated commit hash for a ref; falls back to the ref itself. */
+export async function gitShortRef(cwd: string, ref: string): Promise<string> {
+  try {
+    const out = (await runGit(cwd, ["rev-parse", "--short", ref])).trim();
+    return out !== "" ? out : ref;
+  } catch {
+    return ref;
+  }
+}

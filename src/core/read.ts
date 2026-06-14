@@ -20,16 +20,46 @@ export async function readTarget(ctx: CoreContext, t: ReadTarget): Promise<ToolR
   try {
     const { content, abs } = await ctx.fs.read(t.path);
     const rel = ctx.paths.relative(abs);
-    const lines = splitLines(content);
-    const maxTokens = t.maxTokens ?? ctx.config.maxReadTokens;
-    if (t.symbol !== undefined) return await readSymbol(ctx, t.path, content, lines, rel, t.symbol, maxTokens);
-    if (t.startLine !== undefined || t.endLine !== undefined) {
-      return readRange(lines, rel, t.startLine, t.endLine, maxTokens);
-    }
-    return await readWhole(ctx, t.path, content, lines, rel, maxTokens);
+    return await renderRead(ctx, {
+      filePath: t.path,
+      content,
+      displayRel: rel,
+      symbol: t.symbol,
+      startLine: t.startLine,
+      endLine: t.endLine,
+      maxTokens: t.maxTokens ?? ctx.config.maxReadTokens,
+    });
   } catch (err) {
     return fail(`read failed (${t.path}): ${errMessage(err)}`);
   }
+}
+
+export interface RenderReadArgs {
+  /** Real file path — used for grammar selection / AST parsing. */
+  filePath: string;
+  /** The source to slice (from disk, a git revision, etc.). */
+  content: string;
+  /** What to print in the header (e.g. `rel` or `rel @<ref>`). */
+  displayRel: string;
+  symbol?: string;
+  startLine?: number;
+  endLine?: number;
+  maxTokens: number;
+}
+
+/**
+ * Render a symbol / range / whole-file view of ALREADY-LOADED content (not from
+ * disk). Shared by `code_read`/`read_many` (disk) and `read_at_rev` (git). The
+ * grammar is chosen from `filePath`; the content parsed/sliced is whatever the
+ * caller provides.
+ */
+export async function renderRead(ctx: CoreContext, a: RenderReadArgs): Promise<ToolResult> {
+  const lines = splitLines(a.content);
+  if (a.symbol !== undefined) return await readSymbol(ctx, a.filePath, a.content, lines, a.displayRel, a.symbol, a.maxTokens);
+  if (a.startLine !== undefined || a.endLine !== undefined) {
+    return readRange(lines, a.displayRel, a.startLine, a.endLine, a.maxTokens);
+  }
+  return await readWhole(ctx, a.filePath, a.content, lines, a.displayRel, a.maxTokens);
 }
 
 async function readSymbol(
