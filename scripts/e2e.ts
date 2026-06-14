@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the fourteen free tools",
-      names.join(",") === "apply_patch,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,repo_map,review_branch",
+      "tools/list returns the fifteen free tools",
+      names.join(",") === "apply_patch,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,diff_digest,find_references,grep_context,health,repo_map,review_branch",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -89,8 +89,8 @@ async function main(): Promise<void> {
       ),
     );
     check(
-      "code_check annotated non-read-only",
-      byName.get("code_check")?.annotations?.readOnlyHint === false,
+      "exec tools annotated non-read-only",
+      ["code_check", "check_locate"].every((n) => byName.get(n)?.annotations?.readOnlyHint === false),
     );
 
     const health = await client.callTool({ name: "health", arguments: {} });
@@ -184,6 +184,8 @@ async function main(): Promise<void> {
 
     const checked = await client.callTool({ name: "code_check", arguments: { script: "ok" } });
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));
+    const located = await client.callTool({ name: "check_locate", arguments: { script: "ok" } });
+    check("check_locate runs a script over the wire", !located.isError && resultText(located).includes("✓ ok: passed"));
 
     const escaped = await client.callTool({
       name: "code_read",

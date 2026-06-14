@@ -29,6 +29,7 @@ import { codeReadPlugin } from "../src/plugins/code-read/index.js";
 import { codeSearchPlugin } from "../src/plugins/code-search/index.js";
 import { codeWritePlugin } from "../src/plugins/code-write/index.js";
 import { applyPatchPlugin } from "../src/plugins/apply-patch/index.js";
+import { checkLocatePlugin } from "../src/plugins/check-locate/index.js";
 import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
@@ -671,9 +672,11 @@ async function main(): Promise<void> {
           ok: 'node -e "process.exit(0)"',
           bad: "node -e \"console.error('boomtoken123'); process.exit(3)\"",
           sleep: 'node -e "setTimeout(() => {}, 30000)"',
+          failloc: "node -e \"console.error('src.ts:2:21 - error TS2322: bad type'); process.exit(1)\"",
         },
       };
       await fsp.writeFile(path.join(checkRoot, "package.json"), JSON.stringify(pkg, null, 2));
+      await fsp.writeFile(path.join(checkRoot, "src.ts"), "export function broken() {\n  const x: number = 'oops';\n  return x;\n}\n");
       const cPaths = new PathSandbox(checkRoot);
       const cctx: CoreContext = {
         ...ctx,
@@ -702,6 +705,15 @@ async function main(): Promise<void> {
         timed.isError === true && textOf(timed).includes("timed out") && Date.now() - t0 < 15_000,
         `${Date.now() - t0}ms`,
       );
+
+      // check_locate: run + jump to the failing source
+      const clPlugin = checkLocatePlugin();
+      await clPlugin.init?.(cctx);
+      const cl = tool(clPlugin, "check_locate");
+      check("check_locate pass is terse", textOf(await cl.handler({ script: "ok" })).includes("✓ ok: passed"));
+      const clt = textOf(await cl.handler({ script: "failloc" }));
+      check("check_locate shows the failing source", clt.includes("✗ failloc: FAILED") && clt.includes("src.ts:2") && clt.includes("const x: number = 'oops';"));
+      check("check_locate marks error line + enclosing symbol", clt.includes("›") && clt.includes("in function broken"));
     } finally {
       await fsp.rm(checkRoot, { recursive: true, force: true });
     }
