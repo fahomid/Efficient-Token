@@ -48,6 +48,7 @@ import { repoMapPlugin } from "./plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "./plugins/review-branch/index.js";
 import { symbolFindPlugin } from "./plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "./plugins/symbol-history/index.js";
+import { testRunPlugin } from "./plugins/test-run/index.js";
 import { traceLocatePlugin } from "./plugins/trace-locate/index.js";
 import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 
@@ -87,6 +88,7 @@ const plugins: Plugin[] = [
   codeCheckPlugin(),
   checkLocatePlugin(),
   traceLocatePlugin(),
+  testRunPlugin(),
   codeEditPlugin(),
   codeWritePlugin(),
   replaceSymbolPlugin(),

@@ -57,6 +57,7 @@ import { repoMapPlugin } from "../src/plugins/repo-map/index.js";
 import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
+import { testRunPlugin } from "../src/plugins/test-run/index.js";
 import { traceLocatePlugin } from "../src/plugins/trace-locate/index.js";
 import { typeClosurePlugin } from "../src/plugins/type-closure/index.js";
 
@@ -1086,6 +1087,7 @@ async function main(): Promise<void> {
           sleep: 'node -e "setTimeout(() => {}, 30000)"',
           failloc: "node -e \"console.error('src.ts:2:21 - error TS2322: bad type'); process.exit(1)\"",
           longout: "node -e \"console.error('x.'.repeat(60000)); console.error('src.ts:3:1 - err'); process.exit(1)\"",
+          needsfilter: "node -e \"process.exit(process.argv[1] === 'wanted' ? 0 : 1)\"",
         },
       };
       await fsp.writeFile(path.join(checkRoot, "package.json"), JSON.stringify(pkg, null, 2));
@@ -1130,6 +1132,21 @@ async function main(): Promise<void> {
       const clT0 = Date.now();
       const clLong = textOf(await cl.handler({ script: "longout" }));
       check("check_locate is ReDoS-safe on long output lines", clLong.includes("✗ longout: FAILED") && clLong.includes("src.ts:3") && Date.now() - clT0 < 10_000, `${Date.now() - clT0}ms`);
+
+      // test_run: filter passthrough + injection rejection
+      const trPlugin = testRunPlugin();
+      await trPlugin.init?.(cctx);
+      const tr = tool(trPlugin, "test_run");
+      check("test_run forwards filter (match -> pass)", textOf(await tr.handler({ script: "needsfilter", filter: "wanted" })).includes("passed"));
+      check("test_run forwards filter (mismatch -> fail)", textOf(await tr.handler({ script: "needsfilter", filter: "other" })).includes("FAILED"));
+      check("test_run rejects metacharacters in filter", (await tr.handler({ script: "ok", filter: "x; echo HACKED" })).isError === true);
+      check("test_run rejects command substitution", (await tr.handler({ script: "ok", filter: "$(touch pwned)" })).isError === true);
+      check("test_run rejects backticks/pipes", (await tr.handler({ script: "ok", filter: "a | b `c`" })).isError === true);
+      check("test_run rejects unsafe script name", (await tr.handler({ script: "a; rm -rf /", filter: "x" })).isError === true);
+      // belt-and-suspenders: an injection attempt is rejected BEFORE running (no side effect)
+      await tr.handler({ script: "ok", filter: 'x && node -e "require(\'fs\').writeFileSync(\'PWNED\',\'x\')"' });
+      check("test_run injection never executed", !(await cctx.fs.exists("PWNED")));
+      check("test_run missing script lists available", (await tr.handler({ script: "nope" })).isError === true);
     } finally {
       await fsp.rm(checkRoot, { recursive: true, force: true });
     }

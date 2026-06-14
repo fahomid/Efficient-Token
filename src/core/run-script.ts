@@ -14,11 +14,27 @@ export interface RunResult {
  * The `script` name MUST be validated by the caller (it is run via a shell).
  */
 export function runNpmScript(cwd: string, script: string, timeoutMs: number): Promise<RunResult> {
+  return runShell(cwd, `npm run ${script}`, timeoutMs);
+}
+
+/**
+ * Like {@link runNpmScript} but forwards extra args to the script after `--`
+ * (e.g. a test filter). Each arg is double-quoted into the command line; the
+ * CALLER MUST validate every arg against a shell-safe allowlist (no quotes,
+ * `$`, backticks, `%`, `!`, or shell metacharacters) so nothing can escape the
+ * quotes — this is what keeps "only package.json scripts" intact.
+ */
+export function runNpmScriptArgs(cwd: string, script: string, args: readonly string[], timeoutMs: number): Promise<RunResult> {
+  const tail = args.length > 0 ? ` -- ${args.map((a) => `"${a}"`).join(" ")}` : "";
+  return runShell(cwd, `npm run ${script}${tail}`, timeoutMs);
+}
+
+function runShell(cwd: string, commandLine: string, timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve) => {
     const isWin = process.platform === "win32";
-    const child = spawn("npm", ["run", script], {
+    const child = spawn(commandLine, [], {
       cwd,
-      shell: true, // needed for npm(.cmd); script name is validated upstream
+      shell: true, // needed for npm(.cmd); command is built from validated parts
       windowsHide: true,
       detached: !isWin, // own process group on POSIX, so we can kill the tree
     });

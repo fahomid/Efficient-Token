@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     check(
-      "tools/list returns the thirty-seven free tools",
-      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,move_symbol,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,trace_locate,type_closure",
+      "tools/list returns the thirty-eight free tools",
+      names.join(",") === "apply_patch,call_hierarchy,call_sites,change_coverage,check_locate,code_check,code_context,code_edit,code_outline,code_read,code_search,code_write,commit_log,conflict_digest,diff_digest,find_references,glob,grep_context,health,import_map,json_query,line_blame,marker_inventory,move_symbol,note_read,note_write,outline_diff,project_rename,read_at_rev,read_many,replace_symbol,repo_map,review_branch,symbol_find,symbol_history,test_run,trace_locate,type_closure",
       names.join(","),
     );
     const byName = new Map(tools.map((t) => [t.name, t]));
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     );
     check(
       "exec tools annotated non-read-only",
-      ["code_check", "check_locate"].every((n) => byName.get(n)?.annotations?.readOnlyHint === false),
+      ["code_check", "check_locate", "test_run"].every((n) => byName.get(n)?.annotations?.readOnlyHint === false),
     );
 
     const health = await client.callTool({ name: "health", arguments: {} });
@@ -255,6 +255,10 @@ async function main(): Promise<void> {
     check("code_check runs a script over the wire", !checked.isError && resultText(checked).includes("✓ ok: passed"));
     const located = await client.callTool({ name: "check_locate", arguments: { script: "ok" } });
     check("check_locate runs a script over the wire", !located.isError && resultText(located).includes("✓ ok: passed"));
+    const tested = await client.callTool({ name: "test_run", arguments: { script: "ok", filter: "some test" } });
+    check("test_run runs a filtered script over the wire", !tested.isError && resultText(tested).includes("passed"));
+    const injected = await client.callTool({ name: "test_run", arguments: { script: "ok", filter: "x; echo HACKED" } });
+    check("test_run rejects an injection filter over the wire", injected.isError === true && resultText(injected).includes("invalid filter"));
 
     await client.callTool({ name: "note_write", arguments: { name: "scratch", content: "remember this\n" } });
     const noteRead = await client.callTool({ name: "note_read", arguments: { name: "scratch" } });
