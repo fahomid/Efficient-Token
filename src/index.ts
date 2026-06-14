@@ -1,0 +1,68 @@
+#!/usr/bin/env node
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
+import { loadConfig } from "./core/config.js";
+import type { CoreContext, Plugin } from "./core/contract.js";
+import { loadPlugins } from "./core/loader.js";
+
+import { AstService } from "./services/ast.js";
+import { TokenBudgeter } from "./services/budget.js";
+import { SafeFs } from "./services/fs.js";
+import { createEntitlement } from "./services/license.js";
+import { createLogger } from "./services/logger.js";
+import { PathSandbox } from "./services/paths.js";
+
+import { codeOutlinePlugin } from "./plugins/code-outline/index.js";
+import { codeReadPlugin } from "./plugins/code-read/index.js";
+import { healthPlugin } from "./plugins/health/index.js";
+
+const VERSION = "0.1.0";
+
+/**
+ * The only place features are wired together. Premium plugins can be listed
+ * here unconditionally — the loader skips them until the entitlement allows it.
+ */
+const plugins: Plugin[] = [
+  healthPlugin(),
+  codeOutlinePlugin(),
+  codeReadPlugin(),
+];
+
+async function main(): Promise<void> {
+  const log = createLogger();
+  const config = loadConfig();
+  const paths = new PathSandbox(config.root);
+
+  const ctx: CoreContext = {
+    config,
+    paths,
+    fs: new SafeFs(paths, config.maxFileBytes),
+    ast: new AstService(log),
+    budget: new TokenBudgeter(),
+    license: createEntitlement(),
+    log,
+  };
+
+  // Initialise the WASM runtime up front so the first tool call isn't slow.
+  await ctx.ast.init();
+
+  const server = new McpServer({ name: "efficient-token", version: VERSION });
+  const result = await loadPlugins(server, ctx, plugins);
+
+  log.info(`workspace root: ${config.root}`);
+  log.info(`tier: ${ctx.license.tier}; tools: ${result.registeredTools.join(", ")}`);
+  if (result.skipped.length > 0) {
+    log.info(`skipped (not entitled): ${result.skipped.join(", ")}`);
+  }
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  log.info("connected on stdio");
+}
+
+main().catch((err: unknown) => {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  process.stderr.write(`[efficient-token] FATAL ${detail}\n`);
+  process.exit(1);
+});

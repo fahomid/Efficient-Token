@@ -1,0 +1,61 @@
+{
+  "name": "efficient-token",
+  "version": "0.1.0",
+  "description": "Local-first MCP server that returns distilled, faithful code context to cut LLM token usage without degrading reasoning.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "tokens",
+    "tree-sitter",
+    "code-intelligence",
+    "claude"
+  ],
+  "license": "MIT",
+  "author": "Fahomid <fahomid2012@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fahomid/Efficient-Token.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fahomid/Efficient-Token/issues"
+  },
+  "homepage": "https://github.com/fahomid/Efficient-Token#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "efficient-token": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "ARCHITECTURE.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "rebuild": "npm run clean && npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/index.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "e2e": "tsx scripts/e2e.ts",
+    "discover": "tsx scripts/discover.ts",
+    "test": "npm run smoke && npm run e2e",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run rebuild && npm run smoke"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29",
+    "tree-sitter-wasms": "^0.1.11",
+    "web-tree-sitter": "^0.25",
+    "zod": "^3.25"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5.5"
+  }
+}

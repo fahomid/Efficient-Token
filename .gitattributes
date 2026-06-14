@@ -1,0 +1,9 @@
+# Normalize all text to LF in the repo and on checkout (matches .editorconfig).
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.wasm binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
