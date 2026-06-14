@@ -27,6 +27,7 @@ import { checkLocatePlugin } from "./plugins/check-locate/index.js";
 import { codeCheckPlugin } from "./plugins/code-check/index.js";
 import { codeWritePlugin } from "./plugins/code-write/index.js";
 import { commitLogPlugin } from "./plugins/commit-log/index.js";
+import { designTokensPlugin } from "./plugins/design-tokens/index.js";
 import { conflictDigestPlugin } from "./plugins/conflict-digest/index.js";
 import { diffDigestPlugin } from "./plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "./plugins/find-references/index.js";
@@ -68,6 +69,7 @@ const plugins: Plugin[] = [
   readAtRevPlugin(),
   viewImagePlugin(),
   mediaInfoPlugin(),
+  designTokensPlugin(),
   globPlugin(),
   jsonQueryPlugin(),
   codeSearchPlugin(),

@@ -37,6 +37,7 @@ import { codeCheckPlugin } from "../src/plugins/code-check/index.js";
 import { codeContextPlugin } from "../src/plugins/code-context/index.js";
 import { commitLogPlugin } from "../src/plugins/commit-log/index.js";
 import { conflictDigestPlugin } from "../src/plugins/conflict-digest/index.js";
+import { designTokensPlugin } from "../src/plugins/design-tokens/index.js";
 import { diffDigestPlugin } from "../src/plugins/diff-digest/index.js";
 import { findReferencesPlugin } from "../src/plugins/find-references/index.js";
 import { globPlugin } from "../src/plugins/glob/index.js";
@@ -751,6 +752,19 @@ async function main(): Promise<void> {
     await fsp.writeFile(path.join(root, "img/clip.mp4"), Buffer.from("not a real mp4"));
     const miMp4 = textOf(await mi.handler({ paths: ["img/clip.mp4"] }));
     check("media_info handles A/V path gracefully", miMp4.includes("clip.mp4") && (miMp4.includes("ffprobe") || miMp4.includes("probe failed") || miMp4.includes("mp4")));
+
+    // --- design_tokens plugin -------------------------------------------
+    await ctx.fs.writeAtomic("dt/theme.css", ":root {\n  --color-primary: #3366ff;\n  --space-4: 16px;\n  --font-family-base: 'Inter', sans-serif;\n  --radius: 8px;\n}\n");
+    await ctx.fs.writeAtomic("dt/tokens.json", JSON.stringify({ color: { brand: { value: "#ff0000" } }, space: { sm: { $value: "4px" } } }));
+    const dtPlugin = designTokensPlugin();
+    await dtPlugin.init?.(ctx);
+    const dt = tool(dtPlugin, "design_tokens");
+    const dtAll = textOf(await dt.handler({ paths: ["dt/theme.css", "dt/tokens.json"] }));
+    check("design_tokens extracts CSS vars + JSON tokens, classified",
+      dtAll.includes("color (") && dtAll.includes("--color-primary = #3366ff") && dtAll.includes("size (") && dtAll.includes("16px") && dtAll.includes("color-brand = #ff0000") && dtAll.includes("space-sm = 4px"));
+    const dtColor = textOf(await dt.handler({ paths: ["dt/theme.css"], category: "color" }));
+    check("design_tokens category filter", dtColor.includes("color-primary") && !dtColor.includes("space-4"));
+    check("design_tokens classifies fonts by name", textOf(await dt.handler({ paths: ["dt/theme.css"], category: "font" })).includes("font-family-base"));
 
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
