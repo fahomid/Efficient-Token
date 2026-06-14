@@ -417,6 +417,29 @@ async function main(): Promise<void> {
 
     check("code_search skips node_modules implicitly", !textOf(await cs.handler({ pattern: "alpha" })).includes("node_modules"));
 
+    // Zero-width regex in count+multiline must terminate (no infinite loop).
+    const zw = await cs.handler({ pattern: "\\w*", path: "srch", outputMode: "count", multiline: true });
+    check("code_search zero-width regex terminates", !zw.isError);
+
+    // Scanner must not follow a symlinked scope out of the workspace root.
+    const scanOut = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-scanout-"));
+    await fsp.writeFile(path.join(scanOut, "secret.ts"), "export const secret = 1;\n");
+    try {
+      let linked = false;
+      try {
+        await fsp.symlink(scanOut, path.join(root, "scanlink"), "dir");
+        linked = true;
+      } catch {
+        console.log("  SKIP  code_search blocks symlinked scope (no symlink privilege)");
+      }
+      if (linked) {
+        const esc = await cs.handler({ pattern: "secret", path: "scanlink" });
+        check("code_search blocks symlinked scope", esc.isError === true || !textOf(esc).includes("secret.ts"));
+      }
+    } finally {
+      await fsp.rm(scanOut, { recursive: true, force: true });
+    }
+
     // --- find_references plugin -----------------------------------------
     await ctx.fs.writeAtomic("refs/lib.ts", "export function widget() { return 1; }\n");
     await ctx.fs.writeAtomic("refs/use.ts", "import { widget } from './lib';\nconst x = widget();\nconst y = widget();\n");
@@ -514,6 +537,7 @@ async function main(): Promise<void> {
         scripts: {
           ok: 'node -e "process.exit(0)"',
           bad: "node -e \"console.error('boomtoken123'); process.exit(3)\"",
+          sleep: 'node -e "setTimeout(() => {}, 30000)"',
         },
       };
       await fsp.writeFile(path.join(checkRoot, "package.json"), JSON.stringify(pkg, null, 2));
@@ -537,6 +561,14 @@ async function main(): Promise<void> {
       check("code_check missing script lists available", missing.isError === true && textOf(missing).includes("Available: ok, bad"));
       const unsafe = await cc.handler({ script: "a b; rm -rf /" });
       check("code_check rejects unsafe script name", unsafe.isError === true && textOf(unsafe).includes("invalid script name"));
+
+      const t0 = Date.now();
+      const timed = await cc.handler({ script: "sleep", timeoutMs: 800 });
+      check(
+        "code_check kills timed-out script promptly",
+        timed.isError === true && textOf(timed).includes("timed out") && Date.now() - t0 < 15_000,
+        `${Date.now() - t0}ms`,
+      );
     } finally {
       await fsp.rm(checkRoot, { recursive: true, force: true });
     }

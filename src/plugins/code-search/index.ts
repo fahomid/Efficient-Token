@@ -164,9 +164,15 @@ function numOr(v: unknown, fallback: number): number {
 function countAll(re: RegExp, s: string): number {
   re.lastIndex = 0;
   let n = 0;
-  while (re.exec(s) !== null) {
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s)) !== null) {
     n++;
-    if (re.lastIndex === 0) break; // zero-width guard
+    if (n >= 1_000_000) break; // runaway guard
+    if (m.index === re.lastIndex) {
+      // Zero-width match (e.g. /\w*/): force progress so we cannot loop forever.
+      re.lastIndex++;
+      if (re.lastIndex > s.length) break;
+    }
   }
   return n;
 }

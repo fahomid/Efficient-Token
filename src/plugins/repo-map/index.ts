@@ -60,29 +60,20 @@ export function repoMapPlugin(): Plugin {
             let symbolCount = 0;
             let budgetHit = false;
 
-            const push = (s: string): boolean => {
-              if (used + s.length + 1 > budgetChars) {
-                budgetHit = true;
-                return false;
-              }
-              lines.push(s);
-              used += s.length + 1;
-              return true;
-            };
-
             for (const f of scan.files) {
               const slash = f.rel.lastIndexOf("/");
               const dir = slash === -1 ? "." : f.rel.slice(0, slash);
               const base = slash === -1 ? f.rel : f.rel.slice(slash + 1);
 
               let entry: string;
+              let shownHere = 0;
               if (ctx.ast.supports(f.rel)) {
                 const content = await readText(ctx, f.rel);
                 const outline = content === undefined ? undefined : await ctx.ast.outline(f.rel, content);
                 const top = (outline ?? []).filter((s) => s.container === undefined);
                 if (top.length > 0) {
                   const shown = top.slice(0, perFile);
-                  symbolCount += shown.length;
+                  shownHere = shown.length;
                   const more = top.length > perFile ? `, +${top.length - perFile} more` : "";
                   entry = `  ${base} — ${shown.map((s) => `${s.kind} ${s.name}`).join(", ")}${more}`;
                 } else {
@@ -92,12 +83,23 @@ export function repoMapPlugin(): Plugin {
                 entry = `  ${base}`;
               }
 
-              if (dir !== lastDir) {
-                if (!push(dir === "." ? "." : `${dir}/`)) break;
+              // Budget the directory header + entry TOGETHER, so we never leave a
+              // dangling header and never count symbols for an un-emitted file.
+              const dirHeader = dir === "." ? "." : `${dir}/`;
+              const needDir = dir !== lastDir;
+              const addition = (needDir ? dirHeader.length + 1 : 0) + entry.length + 1;
+              if (used + addition > budgetChars) {
+                budgetHit = true;
+                break;
+              }
+              if (needDir) {
+                lines.push(dirHeader);
                 lastDir = dir;
               }
-              if (!push(entry)) break;
+              lines.push(entry);
+              used += addition;
               fileCount++;
+              symbolCount += shownHere;
             }
 
             const header = `repo map — ${fileCount} file(s), ${symbolCount} top-level symbol(s)`;

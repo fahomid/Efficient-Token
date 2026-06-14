@@ -75,19 +75,30 @@ export class Scanner {
 
   async files(opts: ScanOptions = {}): Promise<ScanResult> {
     const rootAbs = this.paths.resolve(opts.within ?? ".");
+    // Resolve the scan root through symlinks and re-assert containment, so a
+    // symlinked `within` cannot redirect enumeration outside the workspace
+    // (mirrors SafeFs.read; the walk itself never follows symlinks).
+    let realRoot: string;
+    try {
+      realRoot = await fsp.realpath(rootAbs);
+    } catch {
+      return { files: [], truncated: false }; // scope does not exist
+    }
+    this.paths.assertContained(realRoot, opts.within ?? ".");
+
     const exts = opts.exts ? new Set(opts.exts.map((e) => e.toLowerCase())) : undefined;
     const match = opts.glob ? compileGlob(opts.glob) : undefined;
     const max = opts.maxFiles ?? 5000;
 
-    const st = await statSafe(rootAbs);
+    const st = await statSafe(realRoot);
     if (st?.isFile()) {
-      const rel = this.paths.relative(rootAbs);
-      const files = include(rel, exts, match) ? [{ abs: rootAbs, rel }] : [];
+      const rel = this.paths.relative(realRoot);
+      const files = include(rel, exts, match) ? [{ abs: realRoot, rel }] : [];
       return { files, truncated: false };
     }
 
     const out: ScannedFile[] = [];
-    const truncated = await this.walk(rootAbs, exts, match, max, out);
+    const truncated = await this.walk(realRoot, exts, match, max, out);
     return { files: out, truncated };
   }
 

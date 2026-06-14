@@ -1,12 +1,10 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 
-const execFileP = promisify(execFile);
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 300_000;
 const SAFE_SCRIPT = /^[A-Za-z0-9:._-]+$/;
@@ -65,31 +63,15 @@ export function codeCheckPlugin(): Plugin {
             }
 
             const started = Date.now();
-            let code = 0;
-            let combined = "";
-            let timedOut = false;
-            try {
-              const { stdout, stderr } = await execFileP("npm", ["run", script], {
-                cwd: ctx.config.root,
-                timeout: timeoutMs,
-                maxBuffer: 16 * 1024 * 1024,
-                shell: true, // required for npm(.cmd) on Windows; script name is validated
-                windowsHide: true,
-                encoding: "utf8",
-              });
-              combined = join(stdout, stderr);
-            } catch (e) {
-              const err = e as NodeJS.ErrnoException & { stdout?: string; stderr?: string; code?: number | string; killed?: boolean; signal?: string };
-              if (err.code === "ENOENT") return fail("npm was not found on PATH.");
-              if (err.killed || err.signal === "SIGTERM") timedOut = true;
-              combined = join(err.stdout ?? "", err.stderr ?? "");
-              code = typeof err.code === "number" ? err.code : 1;
-            }
+            const run = await runNpmScript(ctx.config.root, script, timeoutMs);
             const secs = ((Date.now() - started) / 1000).toFixed(1);
 
-            if (timedOut) {
-              return fail(`${script}: timed out after ${timeoutMs}ms.`);
+            if (run.notFound) return fail("npm was not found on PATH.");
+            if (run.timedOut) {
+              return fail(`${script}: timed out after ${timeoutMs}ms (process tree killed).`);
             }
+            const code = run.code;
+            const combined = run.output;
             if (code === 0) {
               return ok(`✓ ${script}: passed (exit 0, ${secs}s)`);
             }
@@ -118,8 +100,77 @@ async function readScripts(ctx: CoreContext): Promise<Record<string, string> | u
   }
 }
 
-function join(a: string, b: string): string {
-  return b.trim() === "" ? a : a.trim() === "" ? b : `${a}\n${b}`;
+interface RunResult {
+  code: number;
+  output: string;
+  timedOut: boolean;
+  notFound: boolean;
+}
+
+/**
+ * Run `npm run <script>` and, on timeout, kill the WHOLE process tree (not just
+ * the shell) so a hung script can't be orphaned: a process group + SIGKILL on
+ * POSIX, `taskkill /T /F` on Windows. Output (stdout+stderr) is byte-capped.
+ */
+function runNpmScript(cwd: string, script: string, timeoutMs: number): Promise<RunResult> {
+  return new Promise((resolve) => {
+    const isWin = process.platform === "win32";
+    const child = spawn("npm", ["run", script], {
+      cwd,
+      shell: true, // needed for npm(.cmd); script name is validated upstream
+      windowsHide: true,
+      detached: !isWin, // own process group on POSIX, so we can kill the tree
+    });
+
+    let output = "";
+    let bytes = 0;
+    const cap = 16 * 1024 * 1024;
+    const onData = (d: Buffer): void => {
+      if (bytes >= cap) return;
+      const s = d.toString("utf8");
+      output += s;
+      bytes += s.length;
+    };
+    child.stdout?.on("data", onData);
+    child.stderr?.on("data", onData);
+
+    let timedOut = false;
+    let settled = false;
+    const finish = (r: RunResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree(child.pid, isWin);
+    }, timeoutMs);
+
+    child.on("error", (err: NodeJS.ErrnoException) => {
+      finish({ code: 1, output, timedOut, notFound: err.code === "ENOENT" });
+    });
+    child.on("close", (code) => {
+      finish({ code: code ?? 1, output, timedOut, notFound: false });
+    });
+  });
+}
+
+function killTree(pid: number | undefined, isWin: boolean): void {
+  if (pid === undefined) return;
+  try {
+    if (isWin) {
+      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+    } else {
+      try {
+        process.kill(-pid, "SIGKILL"); // kill the whole process group
+      } catch {
+        process.kill(pid, "SIGKILL");
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
 }
 
 /** Keep the LAST lines that fit in ~maxTokens (errors/summaries are at the end). */
