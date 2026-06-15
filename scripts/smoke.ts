@@ -122,10 +122,18 @@ function textOf(res: ToolResult): string {
   return res.content.map((c) => (c.type === "text" ? c.text : `[image ${c.mimeType}]`)).join("\n");
 }
 
+/**
+ * Make a temp dir and return its realpath. SafeFs realpath-checks every target
+ * against the workspace root, so a non-canonical temp dir (the CI Windows
+ * runner's tmpdir has an 8.3 short component, e.g. RUNNER~1) would make in-root
+ * files look like they escape. Every test root goes through here.
+ */
+async function mkTmp(prefix: string): Promise<string> {
+  return fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), prefix)));
+}
+
 async function main(): Promise<void> {
-  // realpath so the temp root matches what SafeFs realpath-checks against (the CI
-  // Windows runner's tmpdir has an 8.3 short component, e.g. RUNNER~1).
-  const root = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-smoke-")));
+  const root = await mkTmp("efficient-token-smoke-");
   try {
     const samplePath = path.join(root, "sample.ts");
     await fsp.writeFile(samplePath, SAMPLE_TS, "utf8");
@@ -173,7 +181,7 @@ async function main(): Promise<void> {
     check("fs.writeAtomic round-trips", back.content === "hello atomic");
 
     // writeAtomic should not follow a symlink that escapes the workspace root.
-    const outsideDir = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-outside-"));
+    const outsideDir = await mkTmp("efficient-token-outside-");
     try {
       let linkCreated = false;
       try {
@@ -646,7 +654,7 @@ async function main(): Promise<void> {
     check("code_search zero-width regex terminates", !zw.isError);
 
     // Scanner should not follow a symlinked scope out of the workspace root.
-    const scanOut = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-scanout-"));
+    const scanOut = await mkTmp("efficient-token-scanout-");
     await fsp.writeFile(path.join(scanOut, "secret.ts"), "export const secret = 1;\n");
     try {
       let linked = false;
@@ -1100,7 +1108,7 @@ async function main(): Promise<void> {
     check("review_branch detects non-repo", (await tool(rbNonRepo, "review_branch").handler({})).isError === true);
 
     // Real (isolated) git repo: exercise the success paths.
-    const gitRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-git-"));
+    const gitRoot = await mkTmp("efficient-token-git-");
     try {
       const g = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: gitRoot });
       await g(["init", "-q"]);
@@ -1229,7 +1237,7 @@ async function main(): Promise<void> {
     }
 
     // --- conflict_digest plugin (isolated repo with a real merge conflict)
-    const conflictRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-conflict-"));
+    const conflictRoot = await mkTmp("efficient-token-conflict-");
     try {
       const gc = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: conflictRoot });
       await gc(["init", "-q"]);
@@ -1280,7 +1288,7 @@ async function main(): Promise<void> {
     await ccNo.init?.(ctx);
     check("code_check needs package.json", (await tool(ccNo, "code_check").handler({ script: "test" })).isError === true);
 
-    const checkRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-check-"));
+    const checkRoot = await mkTmp("efficient-token-check-");
     try {
       const pkg = {
         name: "t",
