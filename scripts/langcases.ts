@@ -9,8 +9,12 @@ export interface LangCase {
   expect?: string[];
 }
 
-/** Grammars per child process. Kept small so each worker's WASM heap stays tiny. */
-export const LANG_CHUNK = 4;
+/**
+ * Grammars per child process. One per process: a few large grammars (scala,
+ * swift, ...) compiled together exhaust Node 24's V8 Zone, but each loads fine
+ * alone, so the worker handles exactly one grammar then exits.
+ */
+export const LANG_CHUNK = 1;
 
 export const LANG_CASES: LangCase[] = [
   { ext: "py", code: "class Greeter:\n    def greet(self):\n        return 1\n\ndef add(a, b):\n    return a + b\n", expect: ["Greeter", "greet", "add"] },
