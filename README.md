@@ -45,6 +45,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `EFFICIENT_TOKEN_ROOT` | current working dir | Workspace root; **all** file access is confined here. |
 | `EFFICIENT_TOKEN_MAX_READ_TOKENS` | `6000` | Whole-file read budget before `code_read` degrades to an outline. |
 | `EFFICIENT_TOKEN_MAX_FILE_BYTES` | `2000000` | Hard cap on the size of any file the server will read. |
+| `EFFICIENT_TOKEN_GROUPS` | *(all)* | Comma-separated tool **bundles** to register. Every tool definition ships to the model each turn (a fixed token cost), so a project can drop bundles it never uses. Bundles: `core` (everything except the design tools) and `design` (`color_contrast`, `font_info`, `design_tokens`, `svg_digest`, `token_usage`, `media_info`). Unset = all. Example: `EFFICIENT_TOKEN_GROUPS=core` in a pure-code repo (saves ~760 tokens/turn); `EFFICIENT_TOKEN_GROUPS=core,design` for UI/video work. Run `npm run toolcost` to see the exact per-bundle cost. |
 
 ## Tools (free tier)
 

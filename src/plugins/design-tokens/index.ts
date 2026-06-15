@@ -31,6 +31,7 @@ export function designTokensPlugin(): Plugin {
     name: "design-tokens",
     version: "0.1.0",
     tier: "free",
+    group: "design",
     init(c) {
       ctx = c;
     },

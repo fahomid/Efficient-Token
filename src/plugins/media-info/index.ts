@@ -23,6 +23,7 @@ export function mediaInfoPlugin(): Plugin {
     name: "media-info",
     version: "0.1.0",
     tier: "free",
+    group: "design",
     init(c) {
       ctx = c;
     },

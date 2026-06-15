@@ -21,6 +21,7 @@ import { TokenBudgeter } from "../src/services/budget.js";
 import { SafeFs } from "../src/services/fs.js";
 import { createEntitlement } from "../src/services/license.js";
 import { createLogger } from "../src/services/logger.js";
+import { loadPlugins } from "../src/core/loader.js";
 import { PathSandbox } from "../src/services/paths.js";
 import { Scanner } from "../src/services/scan.js";
 import { codeEditPlugin } from "../src/plugins/code-edit/index.js";
@@ -312,6 +313,12 @@ async function main(): Promise<void> {
 
     const rangeRes = await cr.handler({ file_path: "sample.ts", offset: 1, limit: 2 });
     check("code_read range mode (offset/limit, cat-n)", !rangeRes.isError && textOf(rangeRes).includes("lines 1-2") && /(^|\n)\s*1\t/.test(textOf(rangeRes)));
+
+    // GOLDEN sameness: a code_read slice is the EXACT source bytes (not summarized).
+    await ctx.fs.writeAtomic("gold/g.txt", "L1\nL2\nL3\nL4\nL5\n");
+    const goldOut = textOf(await cr.handler({ file_path: "gold/g.txt", offset: 2, limit: 2 }));
+    const goldSlice = goldOut.split("\n").filter((l) => l.includes("\t")).map((l) => l.slice(l.indexOf("\t") + 1));
+    check("code_read is byte-faithful (slice == source lines)", goldSlice.length === 2 && goldSlice[0] === "L2" && goldSlice[1] === "L3");
 
     const wholeRes = await cr.handler({ file_path:"sample.ts" });
     check("code_read whole-file fits", !wholeRes.isError && textOf(wholeRes).includes("class Greeter") && textOf(wholeRes).includes("interface Point"));
@@ -1334,6 +1341,17 @@ async function main(): Promise<void> {
     } finally {
       await fsp.rm(checkRoot, { recursive: true, force: true });
     }
+
+    // --- loader group gate ----------------------------------------------
+    const reg1: string[] = [];
+    await loadPlugins({ registerTool: (n: string) => reg1.push(n) } as never, { ...ctx, config: { ...ctx.config, groups: new Set(["core"]) } }, [healthPlugin(), colorContrastPlugin(), mediaInfoPlugin()]);
+    check("group gate loads core, skips the design bundle", reg1.includes("health") && !reg1.includes("color_contrast") && !reg1.includes("media_info"));
+    const reg2: string[] = [];
+    await loadPlugins({ registerTool: (n: string) => reg2.push(n) } as never, { ...ctx, config: { ...ctx.config, groups: new Set(["core", "design"]) } }, [colorContrastPlugin()]);
+    check("group gate loads an enabled bundle", reg2.includes("color_contrast"));
+    const reg3: string[] = [];
+    await loadPlugins({ registerTool: (n: string) => reg3.push(n) } as never, ctx, [colorContrastPlugin()]);
+    check("group gate: unset groups loads everything", reg3.includes("color_contrast"));
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

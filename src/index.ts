@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -62,10 +65,12 @@ import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 const VERSION = "0.1.0";
 
 /**
- * The only place features are wired together. Premium plugins can be listed
- * here unconditionally — the loader skips them until the entitlement allows it.
+ * The only place features are wired together. Premium/grouped plugins can be
+ * listed here unconditionally — the loader skips them until the entitlement and
+ * the enabled bundle (group) allow it. Exported so dev tooling (e.g. the
+ * tool-cost reporter) can introspect the registry without starting the server.
  */
-const plugins: Plugin[] = [
+export const plugins: Plugin[] = [
   healthPlugin(),
   codeOutlinePlugin(),
   codeReadPlugin(),
@@ -145,8 +150,19 @@ async function main(): Promise<void> {
   log.info("connected on stdio");
 }
 
-main().catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[efficient-token] FATAL ${detail}\n`);
-  process.exit(1);
-});
+/** True when this file is the process entry point (not imported by tooling). */
+function isEntryPoint(): boolean {
+  const arg = process.argv[1];
+  if (arg === undefined) return false;
+  const self = resolve(fileURLToPath(import.meta.url));
+  const invoked = resolve(arg);
+  return process.platform === "win32" ? self.toLowerCase() === invoked.toLowerCase() : self === invoked;
+}
+
+if (isEntryPoint()) {
+  main().catch((err: unknown) => {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[efficient-token] FATAL ${detail}\n`);
+    process.exit(1);
+  });
+}

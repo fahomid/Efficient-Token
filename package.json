@@ -43,6 +43,7 @@
     "smoke": "tsx scripts/smoke.ts",
     "e2e": "tsx scripts/e2e.ts",
     "discover": "tsx scripts/discover.ts",
+    "toolcost": "tsx scripts/toolcost.ts",
     "test": "npm run smoke && npm run e2e",
     "start": "node dist/index.js",
     "prepublishOnly": "npm run rebuild && npm run smoke"

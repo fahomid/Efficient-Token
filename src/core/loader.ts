@@ -45,6 +45,16 @@ export async function loadPlugins(
       continue;
     }
 
+    // Bundle gate: when groups are configured, only enabled bundles register
+    // (orthogonal to tier). Default group is "core". This is what lets a project
+    // shed the per-turn description cost of tool bundles it never uses.
+    const group = plugin.group ?? "core";
+    if (ctx.config.groups !== undefined && !ctx.config.groups.has(group)) {
+      skipped.push(`${plugin.name} (group:${group})`);
+      ctx.log.info(`skip ${plugin.name}: group "${group}" not enabled`);
+      continue;
+    }
+
     await plugin.init?.(ctx);
 
     for (const t of plugin.tools) {

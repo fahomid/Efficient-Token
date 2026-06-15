@@ -71,6 +71,12 @@ export interface Plugin {
   name: string;
   version: string;
   tier: Tier;
+  /**
+   * Bundle this plugin belongs to (default "core"). The loader registers a
+   * plugin only if its group is enabled (see {@link Config.groups}), so niche
+   * bundles can be shed to cut the per-turn tool-description cost.
+   */
+  group?: string;
   tools: ToolDef[];
   /** Capture the context here. Run before any of this plugin's tools register. */
   init?(ctx: CoreContext): void | Promise<void>;

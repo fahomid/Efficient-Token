@@ -19,6 +19,7 @@ export function fontInfoPlugin(): Plugin {
     name: "font-info",
     version: "0.1.0",
     tier: "free",
+    group: "design",
     init(c) {
       ctx = c;
     },

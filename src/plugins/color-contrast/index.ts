@@ -28,6 +28,7 @@ export function colorContrastPlugin(): Plugin {
     name: "color-contrast",
     version: "0.1.0",
     tier: "free",
+    group: "design",
     tools: [
       {
         name: "color_contrast",
