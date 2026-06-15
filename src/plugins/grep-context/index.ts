@@ -21,7 +21,7 @@ export function grepContextPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "grep-context",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

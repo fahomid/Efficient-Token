@@ -6,7 +6,7 @@ export function healthPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "health",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

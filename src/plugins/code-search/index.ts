@@ -19,7 +19,7 @@ export function codeSearchPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-search",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

@@ -29,7 +29,7 @@ export function designTokensPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "design-tokens",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     group: "design",
     init(c) {

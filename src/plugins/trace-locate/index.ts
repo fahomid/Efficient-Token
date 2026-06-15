@@ -17,7 +17,7 @@ export function traceLocatePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "trace-locate",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

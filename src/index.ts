@@ -68,7 +68,7 @@ import { viewImagePlugin } from "./plugins/view-image/index.js";
 import { traceLocatePlugin } from "./plugins/trace-locate/index.js";
 import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 
-const VERSION = "1.0.1";
+const VERSION = "1.0.2";
 
 /**
  * The only place features are wired together. Premium and grouped plugins can be

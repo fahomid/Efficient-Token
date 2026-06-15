@@ -18,7 +18,7 @@ export function notePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "note",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

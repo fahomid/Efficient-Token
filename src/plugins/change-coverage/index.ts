@@ -20,7 +20,7 @@ export function changeCoveragePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "change-coverage",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

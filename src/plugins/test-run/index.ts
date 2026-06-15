@@ -24,7 +24,7 @@ export function testRunPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "test-run",
-    version: "1.0.1",
+    version: "1.0.2",
     tier: "free",
     init(c) {
       ctx = c;

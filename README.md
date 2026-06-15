@@ -1,4 +1,10 @@
+<div align="center">
+
 # efficient-token
+
+**A local-first [MCP](https://modelcontextprotocol.io) server that cuts LLM token usage — without degrading reasoning.**
+
+It does deterministic code work on your machine and returns only distilled, *faithful* results to the model: real slices, real symbols, a fraction of the tokens.
 
 [![CI](https://github.com/fahomid/Efficient-Token/actions/workflows/ci.yml/badge.svg)](https://github.com/fahomid/Efficient-Token/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/efficient-token.svg)](https://www.npmjs.com/package/efficient-token)
@@ -6,19 +12,31 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/fahomid)
 
-A **local-first [MCP](https://modelcontextprotocol.io) server** that does
-deterministic code work on your machine and returns only distilled, **faithful**
-results to the model — cutting token usage **without degrading reasoning**.
+[Install](#install) · [Verify](#verify-it-works) · [Make Claude use it](#make-claude-prefer-these-tools) · [Tools](#tools) · [Measure savings](#measuring-token-savings) · [Releasing](#releasing)
 
-> **The one principle:** anything the model will *reason over* (source code,
-> document text) is returned **losslessly** — real slices, real symbols. Savings
-> come from returning **less** (one symbol instead of a whole file), never from
-> summarizing. The server detects and transforms deterministically; it never makes
-> a judgment the model should make.
+</div>
 
-A concrete example: instead of `Read`-ing a 200-line file to see one function, the
-model calls `code_read` with a symbol name and gets back just that function's real
-source — the same content it would have reasoned over, a fraction of the tokens.
+---
+
+## The idea
+
+> **One principle:** anything the model will *reason over* (source code, document
+> text) is returned **losslessly** — real slices, real symbols. Savings come from
+> returning **less** (one symbol instead of a whole file), never from summarizing.
+> The server detects and transforms deterministically; it never makes a judgment
+> the model should make.
+
+Concretely — to see one function in a 200-line file:
+
+|              | Built-in `Read`         | efficient-token `code_read`                |
+| ------------ | ----------------------- | ------------------------------------------ |
+| **Call**     | `Read(file)`            | `code_read(file, symbol)`                  |
+| **Returns**  | the whole 200-line file | just that function's real source           |
+| **Tokens**   | ~2,400                  | ~400                                       |
+| **Fidelity** | full                    | **identical** — real source, not a summary |
+
+Same reasoning material, a fraction of the context. Multiply that across a session
+and the savings compound.
 
 ## Contents
 
@@ -26,6 +44,7 @@ source — the same content it would have reasoned over, a fraction of the token
 - [Requirements](#requirements)
 - [Install](#install)
 - [Verify it works](#verify-it-works)
+- [Make Claude prefer these tools](#make-claude-prefer-these-tools)
 - [Usage](#usage)
 - [Measuring token savings](#measuring-token-savings)
 - [Configuration](#configuration)
@@ -34,28 +53,24 @@ source — the same content it would have reasoned over, a fraction of the token
 - [Architecture](#architecture)
 - [Open-core / premium](#open-core--premium)
 - [Development](#development)
+- [Releasing](#releasing)
 - [Contributing & security](#contributing--security)
 - [License](#license)
 
 ## What you get
 
-- **45 tools** for reading, searching, reviewing git, editing, and creative/design
-  work — each returns the *real* content the model needs, just less of it.
-- **Drop-in replacements for Claude Code's built-ins.** `code_read`, `code_edit`,
-  `code_write`, `code_search`, and `glob` mirror Read / Edit / Write / Grep / Glob
-  (same inputs, same output shape), so the model uses them with no re-learning and
-  saves tokens in the middle.
-- **Measurable savings.** `health` shows the tokens saved this session;
-  `npm run toolcost` shows the fixed per-turn cost of the tool definitions.
-- **Safe by construction.** Every path is confined to the workspace root
-  (symlink- and ADS-safe), writes are atomic, edits are syntax-guarded, and the
-  runner tools only execute scripts already defined in your `package.json`.
-- **Broad language support** via tree-sitter (WASM, no native build step).
+| | |
+| --- | --- |
+| **45 tools** | Reading, searching, git review, editing, and creative/design work — each returns the *real* content the model needs, just less of it. |
+| **Drop-in built-ins** | `code_read`, `code_edit`, `code_write`, `code_search`, and `glob` mirror Read / Edit / Write / Grep / Glob (same inputs, same output shape) — the model swaps them in with no re-learning. |
+| **Measurable** | `health` shows tokens saved this session; `npm run toolcost` shows the fixed per-turn cost of the tool definitions. |
+| **Safe by construction** | Every path is confined to the workspace root (symlink- and ADS-safe), writes are atomic, edits are syntax-guarded, and the runner tools only execute scripts already in your `package.json`. |
+| **Broad language support** | tree-sitter via WASM — no native build step. |
 
 ## Requirements
 
-- **Node.js ≥ 18** (uses ESM and WASM tree-sitter; no native build step).
-- An MCP host. Examples below use **Claude Code**, but any stdio MCP host works.
+- **Node.js ≥ 18** — ESM and WASM tree-sitter; no native build step.
+- **An MCP host.** Examples below use **Claude Code**, but any stdio MCP host works.
 
 ## Install
 
@@ -72,33 +87,42 @@ Drop `-s user` to register it for the current project only. To pin the workspace
 the server may touch, add `--env EFFICIENT_TOKEN_ROOT=/abs/path/to/project`
 (otherwise it uses the directory you launched the host in).
 
-Prefer a global install? It works too:
+<details>
+<summary>Prefer a global install</summary>
 
 ```bash
 npm i -g efficient-token
 claude mcp add efficient-token -s user -- efficient-token
 ```
 
-### From source
+</details>
+
+<details>
+<summary>From source (for development)</summary>
 
 ```bash
 git clone https://github.com/fahomid/Efficient-Token.git
-cd efficient-token
+cd Efficient-Token
 npm install
 npm run build        # tsc -> dist/index.js
 claude mcp add efficient-token -- node "$(pwd)/dist/index.js"
 ```
 
-During development you can skip the build and run the TypeScript directly:
+Skip the build and run the TypeScript directly during development:
 
 ```bash
 claude mcp add efficient-token -- npx tsx "$(pwd)/src/index.ts"
 ```
 
-### Other MCP hosts
+</details>
+
+<details>
+<summary>Other MCP hosts</summary>
 
 It's a standard stdio MCP server. Point any host at the command
 `npx -y efficient-token` (or `node /abs/path/dist/index.js`) over stdio.
+
+</details>
 
 ## Verify it works
 
@@ -106,7 +130,7 @@ MCP servers load when the host session starts, so **start (or restart) a session
 after registering. To confirm it's connected:
 
 - Run `/mcp` in Claude Code — `efficient-token` should show as connected.
-- Or, without involving the model, run `claude mcp list` (shows each server and
+- Or, **without involving the model**, run `claude mcp list` (shows each server and
   whether it connects), or probe the `health` tool directly over the protocol:
 
   ```bash
@@ -117,7 +141,7 @@ after registering. To confirm it's connected:
 
 `health` reports the workspace root, the limits, and the tokens saved so far:
 
-```
+```text
 efficient-token: ok
 tier: free
 root: /abs/path/to/your/project
@@ -129,16 +153,64 @@ savings this session (estimate):
   net saved ~0 tokens (~0%)
 ```
 
-The savings ledger is per server process, so `npm run health` (a fresh process)
-always reads zero — it's a liveness/config check. To see a live session's
-accumulated savings, ask the model to call `health` in that session.
+> The savings ledger is per server process, so `npm run health` (a fresh process)
+> always reads zero — it's a liveness/config check. To see a live session's
+> accumulated savings, ask the model to call `health` in that session.
+
+## Make Claude prefer these tools
+
+Registering the server only puts these tools on the menu — the model still chooses
+per call, and it leans on the built-in `Read` / `Grep` / `Edit` out of habit. To
+make it **reach for efficient-token first**, add a short routing rule to your
+[`CLAUDE.md`](https://docs.anthropic.com/en/docs/claude-code/memory). Put it in
+`~/.claude/CLAUDE.md` to apply everywhere, or a project's `./CLAUDE.md` for that
+repo only:
+
+````md
+## Tool preference: efficient-token
+
+An `efficient-token` MCP server is available. Its tools return the same real
+source and data as reading or grepping files, distilled to far fewer tokens.
+**Default to them over the built-in file tools and over reading whole files or raw
+git output**, whenever one fits the task — the tool list has the exact names and
+when to use each. As a rule of thumb:
+
+- **Drop-in replacements — always prefer over the built-in:** `code_read` over
+  `Read`, `code_search` over `Grep`, `glob` over `Glob`, `code_edit` over `Edit`,
+  `code_write` over `Write`.
+- **Understand code without reading whole files:** `code_outline`, `repo_map`,
+  `code_context`, `find_references`, `symbol_find`, `call_hierarchy`, `call_sites`,
+  `import_map`, `type_closure`, `grep_context`, `marker_inventory`, `read_many`,
+  `json_query`.
+- **Review changes and history:** `diff_digest`, `review_branch`, `outline_diff`,
+  `commit_log`, `line_blame`, `symbol_history`, `read_at_rev`, `conflict_digest`,
+  `change_coverage` — instead of reading changed files or parsing raw `git`.
+- **Run checks and chase failures:** `code_check`, `test_run`, `check_locate`,
+  `trace_locate` (run allowlisted package.json scripts; failures-only output).
+- **Edit precisely:** `apply_patch` for multi-file edits, `replace_symbol` to
+  rewrite a whole definition, `move_symbol`, `project_rename`; `note_write` /
+  `note_read` to persist findings across steps.
+- **Inspect images, design, and media:** `view_image`, `media_info`,
+  `color_contrast`, `design_tokens`, `font_info`, `svg_digest`, `token_usage`.
+
+Fall back to the built-in tools only for what efficient-token doesn't cover —
+PDFs, notebooks, and other non-code files.
+````
+
+Don't feel obliged to copy the whole list: the opening paragraph plus the first
+bullet (the built-in overrides) is enough on its own — the model discovers the
+rest from the tool descriptions, which load every turn regardless.
+
+> **Want hard enforcement?** A soft steer is usually enough. To *force* the routing,
+> use a Claude Code [`PreToolUse` hook](https://docs.anthropic.com/en/docs/claude-code/hooks)
+> that redirects `Read` / `Grep` / `Edit` to the MCP equivalents, or deny the
+> built-ins in `settings.json` (bluntest; it also blocks image/PDF/notebook reads,
+> so keep an exception for those).
 
 ## Usage
 
-You don't call these tools by hand — the **model** picks them while it works. Once
-the server is registered, Claude will reach for `code_read`/`code_outline` instead
-of dumping whole files, `code_search` instead of `Grep`, `diff_digest` to review
-changes, and so on. A few notes:
+You don't call these tools by hand — the **model** picks them while it works. A few
+things worth knowing:
 
 - **Workspace root.** All file access is confined to one root (`EFFICIENT_TOKEN_ROOT`,
   default: the directory the host launched in). Paths are relative to that root.
@@ -147,32 +219,34 @@ changes, and so on. A few notes:
   range — so a huge file can't blow your context.
 - **Edits are guarded.** `code_edit` / `code_write` / `apply_patch` / `replace_symbol`
   refuse a change that would leave an unclosed token (set `validate=false` to
-  override), and write atomically. The mutating tools declare `destructiveHint`, so
-  you can have your host confirm them.
+  override) and write atomically. The mutating tools declare `destructiveHint`, so
+  your host can confirm them.
 - **Trim what you don't use.** If you only do code work, set
   `EFFICIENT_TOKEN_GROUPS=core` to drop the design/media tools and save their
-  per-turn description cost (see below).
+  per-turn description cost (see [Configuration](#configuration)).
 
 ## Measuring token savings
 
-Two complementary numbers, both built in:
+Two complementary numbers, both built in.
 
-**1. Tokens saved this session — the `health` tool.** Every distilled read records
+**1 · Tokens saved this session — the `health` tool.** Every distilled read records
 an exact baseline (what a whole-file `Read` would have returned) against what was
 actually returned, and `health` surfaces the running total:
 
-```
-savings (this session, estimate): ~2049 tokens over 2 distilled read(s)
-  (returned ~406 vs ~2455 whole-file) [read 1671t/1, outline 379t/1]
+```text
+savings this session (estimate):
+  this server returned ~406 tokens across 2 distilled read(s)
+  equivalent built-in whole-file reads would have cost ~2455 tokens
+  net saved ~2049 tokens (~83%) [read 1671t/1, outline 379t/1]
 ```
 
 The baseline is exact (real byte counts); the token figure is an estimate at ~4
-chars/token, clamped so it can never overstate. Just ask the model to call
-`health` at any point to see the tally.
+chars/token, clamped so it can never overstate. Just ask the model to call `health`
+at any point to see the tally.
 
-**2. Fixed per-turn cost — `npm run toolcost`.** Every tool definition (name +
-description + schema) ships to the model on **every** turn, whether or not it
-fires. This reports that fixed cost, broken down by bundle and by top offenders:
+**2 · Fixed per-turn cost — `npm run toolcost`.** Every tool definition (name +
+description + schema) ships to the model on **every** turn, whether or not it fires.
+This reports that fixed cost, broken down by bundle and by top offenders:
 
 ```bash
 npm run toolcost
@@ -193,14 +267,24 @@ register the server).
 | `EFFICIENT_TOKEN_ROOT` | current working dir | Workspace root. All file access is confined here. |
 | `EFFICIENT_TOKEN_MAX_READ_TOKENS` | `6000` | Whole-file read budget before `code_read` degrades to an outline. |
 | `EFFICIENT_TOKEN_MAX_FILE_BYTES` | `2000000` | Hard cap on the size of any file the server will read. |
-| `EFFICIENT_TOKEN_GROUPS` | *(all)* | Comma-separated tool **bundles** to register. The bundles are `core` (everything except the design tools) and `design` (`color_contrast`, `font_info`, `design_tokens`, `svg_digest`, `token_usage`, `media_info`). Unset loads all; `core` always loads. Example: `core` in a code-only repo, `core,design` for UI/video work. |
+| `EFFICIENT_TOKEN_GROUPS` | *(all)* | Comma-separated tool **bundles** to register: `core` (everything except the design tools) and `design` (`color_contrast`, `font_info`, `design_tokens`, `svg_digest`, `token_usage`, `media_info`). Unset loads all; `core` always loads. Example: `core` in a code-only repo, `core,design` for UI/video work. |
 
 ## Tools
 
 45 tools, grouped by what you reach for. Every tool is read-only unless marked
 *(mutating)* or *(executes)*. All are free and MIT-licensed.
 
-### Read & navigate
+| Group | Tools | What for |
+| --- | --- | --- |
+| **Read & navigate** | 8 | read symbols/ranges, outline, repo map |
+| **Search & symbols** | 10 | grep, references, call graph, types |
+| **Git & review** | 8 | diffs, blame, history, coverage |
+| **Creative & design** | 7 | images, media, color, fonts, SVG |
+| **Run & locate** | 4 | run checks/tests, jump to failures |
+| **Edit & session** | 8 | atomic edits, rename, move, notes |
+
+<details open>
+<summary><strong>Read &amp; navigate</strong> · 8 tools</summary>
 
 | Tool | Use it to… |
 | --- | --- |
@@ -213,7 +297,10 @@ register the server).
 | `read_at_rev` | The historical `code_read`: read one symbol, line range, or whole file as of a git revision, degrading to an outline over budget, instead of letting `git show <ref>:file` dump everything. *(read-only)* |
 | `repo_map` | A token-bounded table of contents: the file tree grouped by directory, with each source file's top-level symbols (classes, functions, types). Orient in a codebase without reading files. *(read-only)* |
 
-### Search & symbols
+</details>
+
+<details>
+<summary><strong>Search &amp; symbols</strong> · 10 tools</summary>
 
 | Tool | Use it to… |
 | --- | --- |
@@ -228,7 +315,10 @@ register the server).
 | `type_closure` | A type's definition plus the verbatim defs of the workspace types it transitively references (cycle-safe, depth-bounded). Understand a complex type in one call instead of chasing each referenced type. *(read-only)* |
 | `code_context` | A task primer for a symbol in one shot: its definition source, the workspace symbols it uses (with signatures), and where it is referenced. Primes a task without chasing dependencies. *(read-only)* |
 
-### Git & review
+</details>
+
+<details>
+<summary><strong>Git &amp; review</strong> · 8 tools</summary>
 
 | Tool | Use it to… |
 | --- | --- |
@@ -241,7 +331,10 @@ register the server).
 | `conflict_digest` | Show only the three-way regions of merge-conflicted files (ours, base, theirs, verbatim and line-numbered) instead of reading whole files to find `<<<<<<<` markers. Extracts only; you decide the resolution. *(read-only)* |
 | `change_coverage` | Intersect your changed lines with an lcov coverage artifact to answer "did I test my change?". Lists covered against uncovered changed lines with the enclosing symbol. *(read-only)* |
 
-### Creative & design
+</details>
+
+<details>
+<summary><strong>Creative &amp; design</strong> · 7 tools</summary>
 
 | Tool | Use it to… |
 | --- | --- |
@@ -253,7 +346,10 @@ register the server).
 | `font_info` | The real family and style of fonts rather than a guess from filenames. Reads family/subfamily from TTF/OTF `name` tables, and `@font-face` declarations from CSS. *(read-only)* |
 | `token_usage` | Audit CSS custom properties: which are defined but never referenced via `var()`, and which are used but never defined, each with a `file:line`. *(read-only)* |
 
-### Run & locate
+</details>
+
+<details>
+<summary><strong>Run &amp; locate</strong> · 4 tools</summary>
 
 | Tool | Use it to… |
 | --- | --- |
@@ -262,25 +358,30 @@ register the server).
 | `trace_locate` | Paste a stack trace or error output and get the source at each `file:line` frame, with context and the enclosing symbol. External and `node_modules` frames are skipped. *(read-only)* |
 | `test_run` | Run a focused test by forwarding a `filter` to a package.json test script (`npm run test -- <filter>`), returning PASS or a bounded failure tail with the failing source. The filter is charset-restricted to exclude shell metacharacters. *(executes)* |
 
-### Edit & session *(atomic, syntax-guarded)*
+</details>
+
+<details>
+<summary><strong>Edit &amp; session</strong> · 8 tools · <em>atomic, syntax-guarded</em></summary>
 
 | Tool | Use it to… |
 | --- | --- |
-| `code_edit` | Like Claude's `Edit` (same `file_path`/`old_string`/`new_string`/`replace_all`): the match must be verbatim and unique unless `replace_all=true`, missing or ambiguous matches are refused, and the write is atomic. Refuses a change leaving an unclosed token unless `validate=false`. *(mutating)* |
+| `code_edit` | Like Claude's `Edit` (same `file_path`/`old_string`/`new_string`/`replace_all`): the match must be verbatim and unique unless `replace_all=true`, missing or ambiguous matches are refused, and the write is atomic. Tolerates CRLF/LF newline differences. Refuses a change leaving an unclosed token unless `validate=false`. *(mutating)* |
 | `code_write` | Like Claude's `Write` (same `file_path`/`content`); creates parent dirs and writes atomically. Carries the same syntax-error guard as `code_edit`. *(mutating)* |
-| `replace_symbol` | Replace a whole function/class/method definition by name: pass only the new source, not the old body as a match anchor. Resolves the span via the AST (export/decorator-aware, line-ending and BOM faithful), disambiguates by `container`/`occurrence`, syntax-guarded, atomic. Avoids re-sending the existing body. *(mutating)* |
+| `replace_symbol` | Replace a whole function/class/method definition by name: pass only the new source, not the old body as a match anchor. Resolves the span via the AST (export/decorator-aware, line-ending and BOM faithful), disambiguates by `container`/`occurrence`, syntax-guarded, atomic. *(mutating)* |
 | `apply_patch` | Apply many edits across one or more files in one atomic, all-or-nothing call. Each edit is `{ file_path, old_string, new_string, replace_all? }`. Validated (incl. syntax guard) in memory first; if anything fails, nothing is written. *(mutating)* |
 | `move_symbol` | Relocate a definition from one file to another atomically, rewriting the named imports/re-exports of it across the workspace and importing it back into the source if still used. Reports the moved code's dependencies so you can complete the destination's imports. `dryRun`-able, syntax-guarded. JS/TS. *(mutating)* |
 | `project_rename` | Rename an identifier across the whole workspace in one atomic call (identifier-boundary, syntax-guarded, `dryRun`-able) instead of find_references plus editing each file. Textual, scoped with `path`/`type`. *(mutating)* |
 | `note_write` / `note_read` | A small persistent scratchpad under `.efficient-token/notes/`. Stash and recall plans and findings across steps and agents. *(write / read)* |
+
+</details>
 
 ## Language support
 
 `code_read` and `code_outline` use [tree-sitter](https://tree-sitter.github.io/)
 (via WASM); the language is chosen by file extension.
 
-**Full symbol outlines** — functions, classes, methods, types, and the like are
-extracted accurately:
+<details open>
+<summary><strong>Full symbol outlines</strong> — functions, classes, methods, types extracted accurately</summary>
 
 > TypeScript (`.ts .mts .cts`), TSX (`.tsx`), JavaScript (`.js .mjs .cjs .jsx`),
 > Python (`.py`), Ruby (`.rb`), PHP (`.php`), Go (`.go`), Rust (`.rs`),
@@ -290,11 +391,15 @@ extracted accurately:
 > Emacs Lisp (`.el`), Lua (`.lua`), Bash (`.sh .bash .zsh`), Solidity (`.sol`),
 > SystemRDL (`.rdl`), TLA⁺ (`.tla`)
 
-**Parse-only** — these parse (so `code_read` works everywhere) but produce few or
-no outline symbols by design (markup, config, data, or macro-based definitions):
+</details>
+
+<details>
+<summary><strong>Parse-only</strong> — these parse (so <code>code_read</code> works) but produce few or no outline symbols by design</summary>
 
 > HTML (`.html .htm`), CSS (`.css`), Vue (`.vue`), ERB/EJS (`.erb .ejs`),
 > JSON (`.json`), TOML (`.toml`), Elixir (`.ex .exs`)
+
+</details>
 
 Any other file type still works with `code_read` in range or whole-file mode; only
 the symbol-aware features need a grammar.
@@ -304,7 +409,7 @@ the symbol-aware features need a grammar.
 A small **kernel** that knows nothing about any feature, plus **plugins** that
 receive a shared `CoreContext` and depend only on it, never on each other.
 
-```
+```text
 src/
   core/      contract.ts · config.ts · loader.ts · premium.ts · result.ts
              read.ts · text.ts · edits.ts · git.ts · run-script.ts
@@ -319,20 +424,19 @@ scripts/
 
 - **stdout is the MCP protocol stream.** The server never writes to it; all logs go
   to stderr.
-- **All filesystem access is sandboxed** to the workspace root, and writes are
-  atomic.
+- **All filesystem access is sandboxed** to the workspace root, and writes are atomic.
 - **Only the loader touches the SDK** and gates tools by tier and bundle.
 
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full design, conventions, and
-the plugin contract.
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full design, conventions, and the
+plugin contract.
 
 ## Open-core / premium
 
-This package is **MIT and free**, forever. It's also wired for **open-core**:
-future premium plugins ship in a separate, privately-licensed package and are
-loaded only when installed and entitled — the core never depends on them, and the
-free tools are unaffected. The package exports the plugin contract types so a
-premium package can build against it. No premium code is part of this release. See
+This package is **MIT and free**, forever. It's also wired for **open-core**: future
+premium plugins ship in a separate, privately-licensed package and are loaded only
+when installed and entitled — the core never depends on them, and the free tools are
+unaffected. The package exports the plugin contract types so a premium package can
+build against it. **No premium code is part of this release.** See
 [`ARCHITECTURE.md`](./ARCHITECTURE.md#premium-plugins-open-core) for the contract.
 
 ## Development
@@ -342,13 +446,55 @@ npm run typecheck   # tsc --noEmit (src + scripts)
 npm run build       # emit dist/
 npm test            # smoke + e2e (must print ALL PASS)
 npm run dev         # run the server from source via tsx
-npm run toolcost    # report the per-turn token cost of the tool definitions
+npm run health      # protocol-level health probe (no model)
+npm run toolcost    # per-turn token cost of the tool definitions
 ```
 
-Adding a plugin: create `src/plugins/<name>/index.ts` exporting a factory that
-returns a `Plugin`, talk only to `ctx`, set the correct `tier`, add one entry to
-the `plugins` array in `src/index.ts`, and extend `scripts/smoke.ts`. Nothing else
+**Adding a plugin:** create `src/plugins/<name>/index.ts` exporting a factory that
+returns a `Plugin`, talk only to `ctx`, set the correct `tier`, add one entry to the
+`plugins` array in `src/index.ts`, and extend `scripts/smoke.ts`. Nothing else
 changes. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
+
+## Releasing
+
+Publishing to npm is automated: pushing a `v*` tag triggers the
+[release workflow](./.github/workflows/release.yml), which verifies the tag matches
+`package.json`, builds, runs the tests, publishes to npm with provenance, and
+creates the GitHub Release. To cut a release:
+
+1. **Bump the version.** Update `version` in `package.json`. The same version string
+   also lives in `src/index.ts` (the `VERSION` constant) and each plugin's `version`
+   field — keep them in sync. A find-and-replace of the old version across `src`
+   handles the constants:
+
+   ```bash
+   # Linux (GNU sed): bump 1.0.2 -> 1.0.3 across src + package.json
+   grep -rl '1\.0\.2' src package.json | xargs sed -i 's/1\.0\.2/1.0.3/g'
+   ```
+   ```powershell
+   # Windows PowerShell
+   $old = '1.0.2'; $new = '1.0.3'
+   @(Get-ChildItem -Recurse src -Filter *.ts) + (Get-Item package.json) |
+     ForEach-Object { (Get-Content $_.FullName -Raw).Replace($old, $new) |
+       Set-Content -NoNewline $_.FullName }
+   ```
+
+2. **Update [`CHANGELOG.md`](./CHANGELOG.md).** Add a dated section for the new
+   version ([Keep a Changelog](https://keepachangelog.com) format) and a link
+   reference at the bottom.
+
+3. **Commit, then tag and push:**
+
+   ```bash
+   git commit -am "chore(release): 1.0.3"
+   git tag -a v1.0.3 -m "efficient-token v1.0.3"
+   git push origin main --follow-tags
+   ```
+
+Follow [semantic versioning](https://semver.org): **patch** for fixes, **minor** for
+new tools or backward-compatible features, **major** for breaking changes. If the
+tag and `package.json` disagree, the release fails its check before publishing — so
+a mistake never ships.
 
 ## Contributing & security
 
@@ -358,12 +504,12 @@ changes. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
   vulnerability privately.
 - [`CHANGELOG.md`](./CHANGELOG.md) — release history.
 
-## Support
-
-efficient-token is MIT-licensed and free. If it saves you tokens and you'd like to
-support its development, sponsorship is welcome and entirely optional —
-[github.com/sponsors/fahomid](https://github.com/sponsors/fahomid).
-
 ## License
 
-[MIT](./LICENSE). Free for personal and commercial use.
+[MIT](./LICENSE) — free for personal and commercial use.
+
+<div align="center">
+<sub>If efficient-token saves you tokens and you'd like to support its development,
+sponsorship is welcome and entirely optional —
+<a href="https://github.com/sponsors/fahomid">github.com/sponsors/fahomid</a>.</sub>
+</div>
