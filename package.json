@@ -44,6 +44,7 @@
     "dev": "tsx src/index.ts",
     "smoke": "node --liftoff-only --wasm-num-compilation-tasks=1 --wasm-lazy-validation --import tsx scripts/smoke.ts",
     "e2e": "tsx scripts/e2e.ts",
+    "health": "tsx scripts/health.ts",
     "discover": "tsx scripts/discover.ts",
     "toolcost": "tsx scripts/toolcost.ts",
     "test": "npm run smoke && npm run e2e",

@@ -103,11 +103,19 @@ It's a standard stdio MCP server. Point any host at the command
 ## Verify it works
 
 MCP servers load when the host session starts, so **start (or restart) a session**
-after registering. Then:
+after registering. To confirm it's connected:
 
 - Run `/mcp` in Claude Code — `efficient-token` should show as connected.
-- Or ask the model to call the **`health`** tool. It reports the workspace root,
-  the limits, and the tokens saved so far:
+- Or, without involving the model, run `claude mcp list` (shows each server and
+  whether it connects), or probe the `health` tool directly over the protocol:
+
+  ```bash
+  npm run health        # spawns dist/index.js, calls health, prints the report
+  # or, interactively, the official inspector:
+  npx @modelcontextprotocol/inspector node dist/index.js
+  ```
+
+`health` reports the workspace root, the limits, and the tokens saved so far:
 
 ```
 efficient-token: ok
@@ -115,8 +123,15 @@ tier: free
 root: /abs/path/to/your/project
 maxReadTokens: 6000
 maxFileBytes: 2000000
-savings (this session, estimate): ~0 tokens over 0 distilled read(s)
+savings this session (estimate):
+  this server returned ~0 tokens across 0 distilled read(s)
+  equivalent built-in whole-file reads would have cost ~0 tokens
+  net saved ~0 tokens (~0%)
 ```
+
+The savings ledger is per server process, so `npm run health` (a fresh process)
+always reads zero — it's a liveness/config check. To see a live session's
+accumulated savings, ask the model to call `health` in that session.
 
 ## Usage
 
