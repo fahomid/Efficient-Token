@@ -24,6 +24,15 @@ export async function loadPlugins(
   const registeredTools: string[] = [];
   const skipped: string[] = [];
 
+  // Warn (don't fail) when EFFICIENT_TOKEN_GROUPS names a bundle that doesn't
+  // exist — a typo would otherwise just silently load fewer optional tools.
+  if (ctx.config.groups !== undefined) {
+    const known = new Set(plugins.map((p) => p.group ?? "core"));
+    for (const g of ctx.config.groups) {
+      if (!known.has(g)) ctx.log.warn(`EFFICIENT_TOKEN_GROUPS: unknown bundle "${g}" (known: ${[...known].join(", ")})`);
+    }
+  }
+
   // `registerTool` is generic over the (runtime-only) Zod raw shape, so the
   // static handler type cannot be inferred here. Cast the method ONCE to the
   // precise signature we use; every call below is then fully type-checked.
@@ -46,10 +55,11 @@ export async function loadPlugins(
     }
 
     // Bundle gate: when groups are configured, only enabled bundles register
-    // (orthogonal to tier). Default group is "core". This is what lets a project
-    // shed the per-turn description cost of tool bundles it never uses.
+    // (orthogonal to tier). The "core" baseline ALWAYS loads — so an additive
+    // value like EFFICIENT_TOKEN_GROUPS=design (or a typo) can never silently
+    // shed the core toolset; it just adds/omits optional bundles.
     const group = plugin.group ?? "core";
-    if (ctx.config.groups !== undefined && !ctx.config.groups.has(group)) {
+    if (ctx.config.groups !== undefined && group !== "core" && !ctx.config.groups.has(group)) {
       skipped.push(`${plugin.name} (group:${group})`);
       ctx.log.info(`skip ${plugin.name}: group "${group}" not enabled`);
       continue;

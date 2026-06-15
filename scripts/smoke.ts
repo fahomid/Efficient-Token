@@ -708,6 +708,16 @@ async function main(): Promise<void> {
     const rmBudget = await rmm.handler({ maxTokens: 5, reads: [{ path: "rm/big.txt" }] });
     const rmBudgetT = textOf(rmBudget);
     check("read_many bounds an oversized first target", !rmBudget.isError && rmBudgetT.length < 2000 && rmBudgetT.includes("truncated"), `len=${rmBudgetT.length}`);
+    // adversarial-review fix: read_many must not credit savings per-target (a file
+    // hit by several targets would inflate the baseline). It opts out entirely.
+    const rmLedger = new SavingsLedger();
+    const rmIsoPlugin = readManyPlugin();
+    await rmIsoPlugin.init?.({ ...ctx, savings: rmLedger });
+    await tool(rmIsoPlugin, "read_many").handler({ reads: [
+      { path: "sample.ts", symbol: "add" },
+      { path: "sample.ts", symbol: "add" },
+    ] });
+    check("read_many does not record savings (no double-count)", rmLedger.report().calls === 0);
 
     // --- json_query plugin ----------------------------------------------
     await ctx.fs.writeAtomic("jq/data.json", JSON.stringify({ name: "pkg", scripts: { build: "tsc", test: "vitest" }, deps: ["a", "b", "c"], nested: { deep: { value: 42 } } }, null, 2));
@@ -1362,6 +1372,26 @@ async function main(): Promise<void> {
     const reg3: string[] = [];
     await loadPlugins({ registerTool: (n: string) => reg3.push(n) } as never, ctx, [colorContrastPlugin()]);
     check("group gate: unset groups loads everything", reg3.includes("color_contrast"));
+    // Regression: an additive bundle value (or a typo) must NEVER drop core.
+    const reg4: string[] = [];
+    await loadPlugins({ registerTool: (n: string) => reg4.push(n) } as never, { ...ctx, config: { ...ctx.config, groups: new Set(["design"]) } }, [healthPlugin(), colorContrastPlugin()]);
+    check("group gate: 'design' still loads core (imply-core)", reg4.includes("health") && reg4.includes("color_contrast"));
+    const reg5: string[] = [];
+    await loadPlugins({ registerTool: (n: string) => reg5.push(n) } as never, { ...ctx, config: { ...ctx.config, groups: new Set(["typo"]) } }, [healthPlugin(), colorContrastPlugin()]);
+    check("group gate: a typo bundle still loads core, skips design", reg5.includes("health") && !reg5.includes("color_contrast"));
+
+    // --- config: group parsing robustness -------------------------------
+    const prevGroups = process.env.EFFICIENT_TOKEN_GROUPS;
+    try {
+      process.env.EFFICIENT_TOKEN_GROUPS = ", ,";
+      check("loadConfig: delimiter-only groups → unset (load all)", loadConfig().groups === undefined);
+      process.env.EFFICIENT_TOKEN_GROUPS = "Design, CORE";
+      const g = loadConfig().groups;
+      check("loadConfig: groups parsed, lowercased", g !== undefined && g.has("design") && g.has("core"));
+    } finally {
+      if (prevGroups === undefined) delete process.env.EFFICIENT_TOKEN_GROUPS;
+      else process.env.EFFICIENT_TOKEN_GROUPS = prevGroups;
+    }
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
   }

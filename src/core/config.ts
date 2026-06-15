@@ -36,9 +36,12 @@ export function loadConfig(): Config {
   const rawRoot = process.env.EFFICIENT_TOKEN_ROOT?.trim();
   const root = rawRoot ? path.resolve(rawRoot) : process.cwd();
   const rawGroups = process.env.EFFICIENT_TOKEN_GROUPS?.trim();
-  const groups = rawGroups
+  const parsedGroups = rawGroups
     ? new Set(rawGroups.split(",").map((g) => g.trim().toLowerCase()).filter(Boolean))
     : undefined;
+  // A delimiter-only value (e.g. ",") parses to an empty set — treat that as
+  // unset (load all), never as "enable nothing", so it can't silently drop tools.
+  const groups = parsedGroups && parsedGroups.size > 0 ? parsedGroups : undefined;
   return {
     root,
     maxReadTokens: intFromEnv("EFFICIENT_TOKEN_MAX_READ_TOKENS", 6000),

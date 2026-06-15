@@ -13,6 +13,9 @@ export interface ReadTarget {
   startLine?: number;
   endLine?: number;
   maxTokens?: number;
+  /** Record savings in the ledger (default true). read_many sets false so a
+   *  file referenced by several targets isn't counted once per target. */
+  recordSavings?: boolean;
 }
 
 /**
@@ -33,6 +36,7 @@ export async function readTarget(ctx: CoreContext, t: ReadTarget): Promise<ToolR
       startLine: t.startLine,
       endLine: t.endLine,
       maxTokens: t.maxTokens ?? ctx.config.maxReadTokens,
+      recordSavings: t.recordSavings,
     });
   } catch (err) {
     return fail(`read failed (${t.path}): ${errMessage(err)}`);
@@ -50,6 +54,8 @@ export interface RenderReadArgs {
   startLine?: number;
   endLine?: number;
   maxTokens: number;
+  /** Record savings in the ledger (default true). */
+  recordSavings?: boolean;
 }
 
 /**
@@ -65,7 +71,10 @@ export async function renderRead(ctx: CoreContext, a: RenderReadArgs): Promise<T
   else if (a.startLine !== undefined || a.endLine !== undefined) result = readRange(lines, a.displayRel, a.startLine, a.endLine, a.maxTokens);
   else result = await readWhole(ctx, a.filePath, a.content, lines, a.displayRel, a.maxTokens);
   // Ledger: baseline = whole file (what Read would return), returned = what we did.
-  if (!result.isError) {
+  // read_many opts out (recordSavings=false): a file hit by several targets would
+  // otherwise be counted once per target, inflating the baseline — under-count
+  // (skip) rather than overstate.
+  if (a.recordSavings !== false && !result.isError) {
     const returned = result.content.reduce((n, c) => n + (c.type === "text" ? c.text.length : 0), 0);
     ctx.savings.record("read", a.content.length, returned);
   }

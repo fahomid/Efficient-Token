@@ -69,6 +69,9 @@ export function readManyPlugin(): Plugin {
                 startLine: t.startLine === undefined ? undefined : Number(t.startLine),
                 endLine: t.endLine === undefined ? undefined : Number(t.endLine),
                 maxTokens: perTarget,
+                // Don't credit savings per-target: several targets can share one
+                // file, which would count that file's baseline more than once.
+                recordSavings: false,
               });
               const text = r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
               const block = `### ${describe(t)}${r.isError ? " (error)" : ""}\n${text}`;

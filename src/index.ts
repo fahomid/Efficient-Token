@@ -144,7 +144,8 @@ async function main(): Promise<void> {
   log.info(`workspace root: ${config.root}`);
   log.info(`tier: ${ctx.license.tier}; tools: ${result.registeredTools.join(", ")}`);
   if (result.skipped.length > 0) {
-    log.info(`skipped (not entitled): ${result.skipped.join(", ")}`);
+    // Each entry carries its own reason suffix — "(tier)" or "(group:…)".
+    log.info(`skipped: ${result.skipped.join(", ")}`);
   }
 
   const transport = new StdioServerTransport();
