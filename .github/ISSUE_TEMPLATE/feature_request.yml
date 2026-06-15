@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose a new tool or an improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        New tools must be **faithful** (no lossy summarizing of anything the model
+        reasons over) and **deterministic** (no judgment calls). See CONTRIBUTING.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What token cost or workflow does this address?
+      description: What does the model do today (e.g. read a whole file) that this would shrink?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed tool / change
+      description: Inputs, output shape, and when the model should reach for it instead of a built-in.
+    validations:
+      required: true
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Fit with the design principle
+      options:
+        - label: Returns real content losslessly (no summarizing of reasoning material)
+        - label: Deterministic — no judgment the model should make

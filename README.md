@@ -1,5 +1,10 @@
 # efficient-token
 
+[![CI](https://github.com/fahomid/Efficient-Token/actions/workflows/ci.yml/badge.svg)](https://github.com/fahomid/Efficient-Token/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/efficient-token.svg)](https://www.npmjs.com/package/efficient-token)
+[![Node](https://img.shields.io/node/v/efficient-token.svg)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 A **local-first [MCP](https://modelcontextprotocol.io) server** that does
 deterministic code work on your machine and returns only distilled, **faithful**
 results to the model — cutting token usage **without degrading reasoning**.
@@ -49,6 +54,11 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 
 ## Tools (free tier)
 
+45 tools, grouped by what you reach for. Every tool is **read-only** unless
+marked *(mutating)* or *(executes)*.
+
+#### Read & navigate
+
 | Tool | Use it to… |
 | --- | --- |
 | `health` | Confirm the server is connected and see tier / workspace / limits, **plus the estimated tokens saved this session** by distilled reads (exact baseline: whole-file size vs what was returned). *(read-only)* |
@@ -58,6 +68,11 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `read_many` | Read **several symbols / ranges / files in one call** (the read-side analog of `apply_patch`) — labeled, budget-bounded; cuts per-call round-trips. *(read-only)* |
 | `json_query` | Extract a **value from a JSON file by a dotted/bracket path** (e.g. `scripts.build`, `items[0].name`) instead of reading the whole file; with no query, a shallow **top-level overview** (keys + types/sizes). Token-bounded. *(read-only)* |
 | `read_at_rev` | The historical `code_read`: read **one symbol / line range / whole file as of a git revision** (degrades to an outline over budget) instead of `git show <ref>:file` dumping everything. *(read-only)* |
+
+#### Creative & design
+
+| Tool | Use it to… |
+| --- | --- |
 | `view_image` | **See raster image file(s)** (png/jpg/gif/webp/avif/bmp) directly — pass paths, get them back as viewable images — to inspect a rendered frame / screenshot / exported asset instead of guessing or asking for a paste. Oversized files are refused. *(read-only)* |
 | `media_info` | Distilled facts about **image / video / audio** files — format, dimensions, aspect ratio, byte size, and (for A/V via `ffprobe` if present) duration/fps/codec — without loading bytes; optional `fps` maps a duration to a frame count. *(read-only)* |
 | `design_tokens` | Distill a project's **design tokens** (colors, sizes/spacing, typography) as verbatim `name=value` pairs from **CSS custom properties** and **design-token JSON**, grouped by kind — instead of re-reading whole stylesheets. *(read-only)* |
@@ -65,6 +80,11 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `svg_digest` | An SVG's **structure** — `viewBox`, intrinsic size, element-type **histogram**, and defined **ids** — without dumping the verbose markup/path data (a structural digest like `code_outline`). *(read-only)* |
 | `font_info` | The real **family / style** of fonts (not guessed from filenames): family + subfamily from **TTF/OTF** `name` tables, and **`@font-face`** declarations (family/weight/style/src) from CSS. *(read-only)* |
 | `token_usage` | Audit **CSS custom properties**: which are **defined but never** referenced via `var()`, and which are **used but never defined** — each with a `file:line` — instead of cross-checking by eye. *(read-only)* |
+
+#### Search & symbols
+
+| Tool | Use it to… |
+| --- | --- |
 | `code_search` | Claude's **`Grep`** (ripgrep): same params — `output_mode` (`files_with_matches`/`content`/`count`), `glob`/`type`, `-A`/`-B`/`-C`, `-i`, `-n`, `-o`, `head_limit`, `multiline`. Returns matches — not whole files. *(read-only)* |
 | `find_references` | Locate where a symbol is **defined** (AST-precise: kind + line + signature) and **used** (identifier-boundary scan) across the workspace, as `file:line` locations. *(read-only)* |
 | `call_sites` | Where a symbol is actually **called** (AST callee of a call/invocation) — not text matches: excludes imports, type uses, comments, value-passing. Each hit `file:line + enclosing symbol + the call line`. TS/JS, Python, Go, Rust, Java, C/C++, Ruby. *(read-only)* |
@@ -76,6 +96,11 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `code_context` | One-shot **task primer** for a symbol: its definition source + the workspace symbols it **uses** (with signatures) + where it's **referenced** — primes a task without chasing dependencies. *(read-only)* |
 | `type_closure` | A type's definition **plus the verbatim defs of the workspace types it transitively references** (cycle-safe, depth-bounded) — understand a complex type in one call instead of chasing each referenced type. *(read-only)* |
 | `repo_map` | A token-bounded **table of contents**: the file tree grouped by directory, with each source file's top-level symbols (classes/functions/types). Orient in a codebase without reading files. *(read-only)* |
+
+#### Git & review
+
+| Tool | Use it to… |
+| --- | --- |
 | `diff_digest` | Review git changes as **hunks only** (or a `--stat` summary / file list) — `ref`/`staged`/`path` scoped — instead of reading whole changed files. Read-only git. *(read-only)* |
 | `commit_log` | Compact **commit history** — one row per commit (`sha date author subject`, no bodies/diffs) — scoped by `path`/`ref`/`limit`, instead of raw `git log`. *(read-only)* |
 | `line_blame` | **Line provenance** via `git blame`, with contiguous same-commit runs **collapsed into ranges** (`Lstart-Lend sha date author summary`). Scope to a symbol/range; marks uncommitted lines. *(read-only)* |
@@ -84,10 +109,20 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 | `outline_diff` | **Symbol-level delta between two revisions**: per changed file, the symbols **added / removed / changed** (an API-surface diff) without reading hunks. Arbitrary rev-to-rev (vs `review_branch`'s working-tree, changed-only). *(read-only)* |
 | `conflict_digest` | Show only the **three-way regions of merge-conflicted files** (ours / base / theirs, verbatim + line-numbered) instead of reading whole files to find `<<<<<<<` markers. Extracts only — you decide the resolution. *(read-only)* |
 | `change_coverage` | Intersect your **changed lines with an lcov coverage artifact** — "did I test my change?" — listing covered vs **uncovered changed lines + enclosing symbol**, instead of reading a huge coverage report by hand. *(read-only)* |
+
+#### Run & locate
+
+| Tool | Use it to… |
+| --- | --- |
 | `code_check` | Run one of the project's **own** `package.json` scripts (test/build/lint/typecheck) and return a one-line PASS or **bounded failure output** — never the whole log. Allowlisted to defined scripts; no arbitrary commands. *(executes)* |
 | `check_locate` | Like `code_check`, but on failure it parses `file:line` from the output and returns the **failing source + enclosing symbol** — "the check failed → here's the code" in one call. *(executes)* |
 | `trace_locate` | Paste a **stack trace / error output** and get the source at each `file:line` frame (context + enclosing symbol); external/`node_modules` frames are skipped. Same locator as `check_locate`, on text you supply. *(read-only)* |
 | `test_run` | Run a **focused test** by forwarding a `filter` to a package.json test script (`npm run test -- <filter>`) — PASS or a bounded failure tail + failing source — instead of the whole suite. Only package.json scripts; the filter is charset-restricted (no shell metacharacters). *(executes)* |
+
+#### Edit & session *(atomic, syntax-guarded)*
+
+| Tool | Use it to… |
+| --- | --- |
 | `code_edit` | Claude's **`Edit`** (same `file_path`/`old_string`/`new_string`/`replace_all`): match **verbatim** + **unique** unless `replace_all=true`; refuses missing/ambiguous; atomic write. Adds a guard that **refuses a change leaving an unclosed token** (e.g. a missing `}`) unless `validate=false`. *(mutating)* |
 | `code_write` | Claude's **`Write`** (same `file_path`/`content`); creates parent dirs; atomic write. Same **syntax-error recovery guard** as `code_edit` (`validate=false` to override). *(mutating)* |
 | `replace_symbol` | Replace a whole **function/class/method definition by NAME** — pass only the new source, not the old body as a match anchor (as `code_edit` needs). Resolves the span via the AST (export/decorator-aware, line-ending/BOM faithful), disambiguates by `container`/`occurrence`, runs the same syntax guard, atomic write. Kills re-sending the existing body on every whole-symbol rewrite. *(mutating)* |
@@ -136,12 +171,15 @@ receive a shared `CoreContext` and depend only on it — never on each other.
 
 ```
 src/
-  core/      contract.ts · config.ts · loader.ts · result.ts · text.ts
-  services/  logger.ts · paths.ts · fs.ts · ast.ts · budget.ts · license.ts
-  plugins/   health · code-outline · code-read
+  core/      contract.ts · config.ts · loader.ts · result.ts · read.ts
+             text.ts · edits.ts · git.ts · run-script.ts
+  services/  logger.ts · paths.ts · fs.ts · ast.ts · scan.ts
+             budget.ts · savings.ts · license.ts
+  plugins/   one folder per tool (45 tools across the groups above)
   index.ts   bootstrap: build ctx, register plugins, serve over stdio
 scripts/
-  smoke.ts   self-test
+  smoke.ts   in-process self-test      e2e.ts      real-stdio round-trip
+  toolcost.ts per-turn cost report     discover.ts grammar node inspector
 ```
 
 - **stdout is the MCP protocol stream** — the server never writes to it; all logs
@@ -165,8 +203,17 @@ npm run dev         # run the server from source via tsx
 Adding a plugin: create `src/plugins/<name>/index.ts` exporting a factory that
 returns a `Plugin`, talk only to `ctx`, set the correct `tier`, add one entry to
 the `plugins` array in `src/index.ts`, and extend `scripts/smoke.ts`. Nothing
-else changes.
+else changes. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
+
+## Contributing & security
+
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — dev setup, the plugin contract, and the
+  Definition of Done.
+- [`SECURITY.md`](./SECURITY.md) — the sandbox/security model and how to report a
+  vulnerability privately.
+- [`CHANGELOG.md`](./CHANGELOG.md) — release history.
 
 ## License
 
-[MIT](./LICENSE) (free tier).
+[MIT](./LICENSE) (free tier). See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the architecture
+brief and the open-core premium seam.
