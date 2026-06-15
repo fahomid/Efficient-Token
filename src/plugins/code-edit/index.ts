@@ -25,7 +25,7 @@ export function codeEditPlugin(): Plugin {
         name: "code_edit",
         title: "Edit code",
         description:
-          "Replace an exact string in an existing file (precise find-and-replace). oldString must match the file VERBATIM (including whitespace/indentation) and be UNIQUE unless replaceAll=true — read the file with code_read first and copy the exact text. Refuses missing or ambiguous matches; never edits blindly. Writes atomically. For a full-file create/overwrite use code_write.",
+          "Exact find-and-replace in a file, matching Claude's Edit (same file_path/old_string/new_string/replace_all). old_string must match VERBATIM (incl. whitespace) and be UNIQUE unless replace_all=true. Refuses missing/ambiguous matches; atomic write; refuses an edit that would introduce an unclosed token (validate=false to override). For a full create/overwrite use code_write.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -33,15 +33,15 @@ export function codeEditPlugin(): Plugin {
           openWorldHint: false,
         },
         inputSchema: {
-          path: z.string().describe("File path relative to the workspace root."),
-          oldString: z
+          file_path: z.string().describe("File path (absolute, or relative to the workspace root), like Claude's Edit."),
+          old_string: z
             .string()
             .min(1)
             .describe("Exact text to replace — must match the file verbatim."),
-          newString: z
+          new_string: z
             .string()
             .describe("Replacement text (may be empty to delete the matched text)."),
-          replaceAll: z
+          replace_all: z
             .boolean()
             .optional()
             .describe("Replace EVERY occurrence instead of requiring a unique match."),
@@ -52,10 +52,10 @@ export function codeEditPlugin(): Plugin {
         },
         handler: async (args) => {
           try {
-            const p = String(args.path);
-            const oldString = String(args.oldString);
-            const newString = String(args.newString);
-            const replaceAll = args.replaceAll === true;
+            const p = String(args.file_path);
+            const oldString = String(args.old_string);
+            const newString = String(args.new_string);
+            const replaceAll = args.replace_all === true;
 
             const { content, abs } = await ctx.fs.readRaw(p);
             const rel = ctx.paths.relative(abs);

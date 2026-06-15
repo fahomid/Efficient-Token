@@ -24,7 +24,7 @@ export function codeWritePlugin(): Plugin {
         name: "code_write",
         title: "Write file",
         description:
-          "Create a new file, or OVERWRITE an existing one entirely, with the given content. Use this for new files or full rewrites; to change part of an existing file prefer code_edit. Creates parent directories, writes atomically, and is confined to the workspace.",
+          "Create a new file, or OVERWRITE an existing one entirely (same file_path/content as Claude's Write). Use this for new files or full rewrites; to change part of a file prefer code_edit. Creates parent dirs, writes atomically, confined to the workspace; refuses content with an unclosed token (validate=false to override).",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -32,7 +32,7 @@ export function codeWritePlugin(): Plugin {
           openWorldHint: false,
         },
         inputSchema: {
-          path: z.string().describe("File path relative to the workspace root."),
+          file_path: z.string().describe("File path (absolute, or relative to the workspace root), like Claude's Write."),
           content: z.string().describe("Full file contents to write."),
           validate: z
             .boolean()
@@ -41,7 +41,7 @@ export function codeWritePlugin(): Plugin {
         },
         handler: async (args) => {
           try {
-            const p = String(args.path);
+            const p = String(args.file_path);
             const content = String(args.content);
 
             const existed = await ctx.fs.exists(p);

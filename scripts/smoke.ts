@@ -304,26 +304,26 @@ async function main(): Promise<void> {
     await readPlugin.init?.(ctx);
     const cr = tool(readPlugin, "code_read");
 
-    const symRes = await cr.handler({ path: "sample.ts", symbol: "add" });
+    const symRes = await cr.handler({ file_path:"sample.ts", symbol: "add" });
     check("code_read symbol mode", !symRes.isError && textOf(symRes).includes("function add") && textOf(symRes).includes("return a + b;"));
 
-    const missRes = await cr.handler({ path: "sample.ts", symbol: "doesNotExist" });
+    const missRes = await cr.handler({ file_path:"sample.ts", symbol: "doesNotExist" });
     check("code_read missing symbol lists names", missRes.isError === true && textOf(missRes).includes("not found") && textOf(missRes).includes("add"));
 
-    const rangeRes = await cr.handler({ path: "sample.ts", startLine: 1, endLine: 2 });
-    check("code_read range mode", !rangeRes.isError && textOf(rangeRes).includes("lines 1-2") && textOf(rangeRes).includes("1| "));
+    const rangeRes = await cr.handler({ file_path: "sample.ts", offset: 1, limit: 2 });
+    check("code_read range mode (offset/limit, cat-n)", !rangeRes.isError && textOf(rangeRes).includes("lines 1-2") && /(^|\n)\s*1\t/.test(textOf(rangeRes)));
 
-    const wholeRes = await cr.handler({ path: "sample.ts" });
+    const wholeRes = await cr.handler({ file_path:"sample.ts" });
     check("code_read whole-file fits", !wholeRes.isError && textOf(wholeRes).includes("class Greeter") && textOf(wholeRes).includes("interface Point"));
 
-    const degradeRes = await cr.handler({ path: "sample.ts", maxTokens: 1 });
+    const degradeRes = await cr.handler({ file_path:"sample.ts", maxTokens: 1 });
     const dTxt = textOf(degradeRes);
     check("code_read degrades over budget", !degradeRes.isError && dTxt.includes("exceeds budget 1") && dTxt.includes("Outline:") && dTxt.includes("First lines:"));
 
     // A wide EXPLICIT range over a large file must bound output, not dump it
     // (adversarial-review fix: readRange now honours maxTokens).
     await ctx.fs.writeAtomic("bigrange.ts", Array.from({ length: 800 }, (_, i) => `const v${i} = ${i}; // ${"y".repeat(40)}`).join("\n") + "\n");
-    const wideRange = await cr.handler({ path: "bigrange.ts", startLine: 1, endLine: 800, maxTokens: 50 });
+    const wideRange = await cr.handler({ file_path: "bigrange.ts", offset: 1, limit: 800, maxTokens: 50 });
     const wrTxt = textOf(wideRange);
     check("code_read bounds a wide range", !wideRange.isError && wrTxt.includes("more line(s)") && wrTxt.length < 3500, `len=${wrTxt.length}`);
 
@@ -331,18 +331,18 @@ async function main(): Promise<void> {
     // Degrade must stay bounded even when the file is one giant line.
     const longLine = `const data = "${"x".repeat(60000)}";`;
     await ctx.fs.writeAtomic("minified.js", longLine);
-    const minRes = await cr.handler({ path: "minified.js" });
+    const minRes = await cr.handler({ file_path:"minified.js" });
     const minTxt = textOf(minRes);
     check("code_read bounds degrade of one long line", !minRes.isError && minTxt.length < 5000 && minTxt.includes("long lines truncated"), `len=${minTxt.length}`);
 
     // Trailing newline must not produce a phantom numbered line / off-by-one.
     await ctx.fs.writeAtomic("nl.txt", "l1\nl2\nl3\n");
-    const nlTxt = textOf(await cr.handler({ path: "nl.txt" }));
-    check("code_read no phantom trailing line", nlTxt.includes("3 line(s)") && !nlTxt.includes("4| "), nlTxt);
+    const nlTxt = textOf(await cr.handler({ file_path:"nl.txt" }));
+    check("code_read no phantom trailing line", nlTxt.includes("3 line(s)") && !/\n\s*4\t/.test(nlTxt), nlTxt);
 
     // Lone-CR line endings split correctly and leave no stray CR in output.
     await ctx.fs.writeAtomic("cr.txt", "a\rb\rc");
-    const crTxt = textOf(await cr.handler({ path: "cr.txt" }));
+    const crTxt = textOf(await cr.handler({ file_path:"cr.txt" }));
     check("code_read splits lone-CR with no stray CR", crTxt.includes("3 line(s)") && !crTxt.includes("\r"), JSON.stringify(crTxt));
 
     // splitLines / truncate helpers.
@@ -377,11 +377,11 @@ async function main(): Promise<void> {
     await writePlugin.init?.(ctx);
     const cw = tool(writePlugin, "code_write");
 
-    const created = await cw.handler({ path: "w/new.txt", content: "hello\nworld\n" });
+    const created = await cw.handler({ file_path:"w/new.txt", content: "hello\nworld\n" });
     check("code_write creates file", !created.isError && textOf(created).includes("Created") && (await ctx.fs.read("w/new.txt")).content === "hello\nworld\n");
-    const overwritten = await cw.handler({ path: "w/new.txt", content: "changed\n" });
+    const overwritten = await cw.handler({ file_path:"w/new.txt", content: "changed\n" });
     check("code_write overwrites file", !overwritten.isError && textOf(overwritten).includes("Overwrote") && (await ctx.fs.read("w/new.txt")).content === "changed\n");
-    check("code_write rejects path escape", (await cw.handler({ path: "../escape.txt", content: "x" })).isError === true);
+    check("code_write rejects path escape", (await cw.handler({ file_path:"../escape.txt", content: "x" })).isError === true);
 
     // --- code_edit plugin (Edit semantics) ------------------------------
     const editPlugin = codeEditPlugin();
@@ -389,73 +389,73 @@ async function main(): Promise<void> {
     const ce = tool(editPlugin, "code_edit");
 
     await ctx.fs.writeAtomic("e/edit.txt", "alpha\nbeta\nalpha\n");
-    const uniqueEdit = await ce.handler({ path: "e/edit.txt", oldString: "beta", newString: "BETA" });
+    const uniqueEdit = await ce.handler({ file_path:"e/edit.txt", old_string:"beta", new_string:"BETA" });
     check("code_edit replaces unique match", !uniqueEdit.isError && (await ctx.fs.read("e/edit.txt")).content === "alpha\nBETA\nalpha\n");
 
-    const ambiguous = await ce.handler({ path: "e/edit.txt", oldString: "alpha", newString: "X" });
+    const ambiguous = await ce.handler({ file_path:"e/edit.txt", old_string:"alpha", new_string:"X" });
     check("code_edit refuses ambiguous match", ambiguous.isError === true && textOf(ambiguous).includes("not unique (2 matches)"));
     check("code_edit ambiguous left file unchanged", (await ctx.fs.read("e/edit.txt")).content === "alpha\nBETA\nalpha\n");
 
-    const all = await ce.handler({ path: "e/edit.txt", oldString: "alpha", newString: "X", replaceAll: true });
+    const all = await ce.handler({ file_path:"e/edit.txt", old_string:"alpha", new_string:"X", replace_all:true });
     check("code_edit replaceAll replaces every match", !all.isError && textOf(all).includes("2 replacement(s)") && (await ctx.fs.read("e/edit.txt")).content === "X\nBETA\nX\n");
 
-    const notFound = await ce.handler({ path: "e/edit.txt", oldString: "zzz", newString: "y" });
+    const notFound = await ce.handler({ file_path:"e/edit.txt", old_string:"zzz", new_string:"y" });
     check("code_edit reports missing oldString", notFound.isError === true && textOf(notFound).includes("not found"));
 
     // newString with `$` patterns must be inserted LITERALLY (no String.replace).
     await ctx.fs.writeAtomic("e/dollar.txt", "value = HERE;\n");
-    await ce.handler({ path: "e/dollar.txt", oldString: "HERE", newString: "$&$1$$x" });
+    await ce.handler({ file_path:"e/dollar.txt", old_string:"HERE", new_string:"$&$1$$x" });
     check("code_edit inserts $ patterns literally", (await ctx.fs.read("e/dollar.txt")).content === "value = $&$1$$x;\n", (await ctx.fs.read("e/dollar.txt")).content);
     await ctx.fs.writeAtomic("e/dollar2.txt", "a HERE b HERE c\n");
-    await ce.handler({ path: "e/dollar2.txt", oldString: "HERE", newString: "$&", replaceAll: true });
+    await ce.handler({ file_path:"e/dollar2.txt", old_string:"HERE", new_string:"$&", replace_all:true });
     check("code_edit replaceAll inserts $ literally", (await ctx.fs.read("e/dollar2.txt")).content === "a $& b $& c\n");
 
-    const identical = await ce.handler({ path: "e/edit.txt", oldString: "X", newString: "X" });
+    const identical = await ce.handler({ file_path:"e/edit.txt", old_string:"X", new_string:"X" });
     check("code_edit rejects identical old/new", identical.isError === true && textOf(identical).includes("identical"));
 
-    check("code_edit rejects path escape", (await ce.handler({ path: "../escape.txt", oldString: "a", newString: "b" })).isError === true);
+    check("code_edit rejects path escape", (await ce.handler({ file_path:"../escape.txt", old_string:"a", new_string:"b" })).isError === true);
 
     // code_edit preserves a BOM (uses raw read, not BOM-stripped read).
     const BOM = String.fromCharCode(0xfeff);
     await ctx.fs.writeAtomic("e/bom.ts", `${BOM}const k = 1;\n`);
-    await ce.handler({ path: "e/bom.ts", oldString: "const k = 1;", newString: "const k = 2;" });
+    await ce.handler({ file_path:"e/bom.ts", old_string:"const k = 1;", new_string:"const k = 2;" });
     check("code_edit preserves BOM via raw read", (await ctx.fs.readRaw("e/bom.ts")).content === `${BOM}const k = 2;\n`);
 
     // --- syntax recovery guard (code_edit + code_write) -----------------
     const GOOD = "export function f() {\n  return 1;\n}\n";
     await ctx.fs.writeAtomic("syn/f.ts", GOOD);
-    const broke = await ce.handler({ path: "syn/f.ts", oldString: "  return 1;\n}", newString: "  return 1;" });
+    const broke = await ce.handler({ file_path:"syn/f.ts", old_string:"  return 1;\n}", new_string:"  return 1;" });
     check("code_edit refuses syntax-breaking edit", broke.isError === true && textOf(broke).includes("syntax error"));
     check("code_edit left file unchanged after refusal", (await ctx.fs.read("syn/f.ts")).content === GOOD);
-    const forced = await ce.handler({ path: "syn/f.ts", oldString: "  return 1;\n}", newString: "  return 1;", validate: false });
+    const forced = await ce.handler({ file_path:"syn/f.ts", old_string:"  return 1;\n}", new_string:"  return 1;", validate: false });
     check("code_edit validate:false overrides guard", !forced.isError && !(await ctx.fs.read("syn/f.ts")).content.includes("}"));
 
     await ctx.fs.writeAtomic("syn/g.ts", "export const x = 1;\n");
-    const validEdit = await ce.handler({ path: "syn/g.ts", oldString: "= 1", newString: "= 2" });
+    const validEdit = await ce.handler({ file_path:"syn/g.ts", old_string:"= 1", new_string:"= 2" });
     check("code_edit allows syntactically-valid edit", !validEdit.isError && (await ctx.fs.read("syn/g.ts")).content.includes("= 2"));
 
     await ctx.fs.writeAtomic("syn/broken.ts", "export function h() {\n  return 1;\n"); // already missing }
-    const fixBroken = await ce.handler({ path: "syn/broken.ts", oldString: "return 1;\n", newString: "return 1;\n}\n" });
+    const fixBroken = await ce.handler({ file_path:"syn/broken.ts", old_string:"return 1;\n", new_string:"return 1;\n}\n" });
     check("code_edit allows edits to an already-broken file", !fixBroken.isError);
 
     await ctx.fs.writeAtomic("syn/n.txt", "hello\n");
-    const txtEdit = await ce.handler({ path: "syn/n.txt", oldString: "hello", newString: "((( unbalanced" });
+    const txtEdit = await ce.handler({ file_path:"syn/n.txt", old_string:"hello", new_string:"((( unbalanced" });
     check("code_edit skips validation for non-grammar files", !txtEdit.isError && (await ctx.fs.read("syn/n.txt")).content.includes("((("));
 
-    const cwBroke = await cw.handler({ path: "syn/w.ts", content: "export function w() {\n  return 1;\n" });
+    const cwBroke = await cw.handler({ file_path:"syn/w.ts", content: "export function w() {\n  return 1;\n" });
     check("code_write refuses syntactically-broken content", cwBroke.isError === true && textOf(cwBroke).includes("syntax error"));
     check("code_write did not create the broken file", !(await ctx.fs.exists("syn/w.ts")));
-    const cwForced = await cw.handler({ path: "syn/w.ts", content: "export function w() {\n  return 1;\n", validate: false });
+    const cwForced = await cw.handler({ file_path:"syn/w.ts", content: "export function w() {\n  return 1;\n", validate: false });
     check("code_write validate:false overrides", !cwForced.isError && (await ctx.fs.exists("syn/w.ts")));
-    const cwOk = await cw.handler({ path: "syn/ok.ts", content: "export const y = 2;\n" });
+    const cwOk = await cw.handler({ file_path:"syn/ok.ts", content: "export const y = 2;\n" });
     check("code_write allows valid content", !cwOk.isError && (await ctx.fs.read("syn/ok.ts")).content.includes("y = 2"));
 
     // Valid-but-newer TS must NOT be falsely blocked (grammar emits ERROR, not MISSING).
     await ctx.fs.writeAtomic("syn/modern.ts", "class C {\n  x = 1;\n}\n");
-    const accessorEdit = await ce.handler({ path: "syn/modern.ts", oldString: "  x = 1;", newString: "  accessor x = 1;" });
+    const accessorEdit = await ce.handler({ file_path:"syn/modern.ts", old_string:"  x = 1;", new_string:"  accessor x = 1;" });
     check("code_edit allows valid `accessor` field (no false positive)", !accessorEdit.isError && (await ctx.fs.read("syn/modern.ts")).content.includes("accessor x = 1"));
     await ctx.fs.writeAtomic("syn/variance.ts", "export interface Box<T> { v: T }\n");
-    const varianceEdit = await ce.handler({ path: "syn/variance.ts", oldString: "Box<T>", newString: "Box<out T>" });
+    const varianceEdit = await ce.handler({ file_path:"syn/variance.ts", old_string:"Box<T>", new_string:"Box<out T>" });
     check("code_edit allows valid in/out variance (no false positive)", !varianceEdit.isError && (await ctx.fs.read("syn/variance.ts")).content.includes("Box<out T>"));
 
     // code_write: an UNREADABLE (oversize) existing baseline must not be faked clean.
@@ -501,38 +501,38 @@ async function main(): Promise<void> {
     await ctx.fs.writeAtomic("ap/a.ts", "export const a = 1;\nexport const b = 2;\n");
     await ctx.fs.writeAtomic("ap/b.ts", "export const c = 3;\n");
     const ap1 = await ap.handler({ edits: [
-      { path: "ap/a.ts", oldString: "a = 1", newString: "a = 10" },
-      { path: "ap/a.ts", oldString: "b = 2", newString: "b = 20" },
-      { path: "ap/b.ts", oldString: "c = 3", newString: "c = 30" },
+      { file_path: "ap/a.ts", old_string:"a = 1", new_string:"a = 10" },
+      { file_path: "ap/a.ts", old_string:"b = 2", new_string:"b = 20" },
+      { file_path: "ap/b.ts", old_string:"c = 3", new_string:"c = 30" },
     ] });
     check("apply_patch applies across files", !ap1.isError && (await ctx.fs.read("ap/a.ts")).content === "export const a = 10;\nexport const b = 20;\n" && (await ctx.fs.read("ap/b.ts")).content === "export const c = 30;\n");
 
     await ctx.fs.writeAtomic("ap/seq.ts", "let x = 0;\n");
     const apSeq = await ap.handler({ edits: [
-      { path: "ap/seq.ts", oldString: "= 0", newString: "= 1" },
-      { path: "ap/seq.ts", oldString: "= 1", newString: "= 2" },
+      { file_path: "ap/seq.ts", old_string:"= 0", new_string:"= 1" },
+      { file_path: "ap/seq.ts", old_string:"= 1", new_string:"= 2" },
     ] });
     check("apply_patch sequential edits compound", !apSeq.isError && (await ctx.fs.read("ap/seq.ts")).content === "let x = 2;\n");
 
     await ctx.fs.writeAtomic("ap/x.ts", "export const p = 1;\n");
     await ctx.fs.writeAtomic("ap/y.ts", "export const q = 2;\n");
     const apAbort = await ap.handler({ edits: [
-      { path: "ap/x.ts", oldString: "p = 1", newString: "p = 11" },
-      { path: "ap/y.ts", oldString: "NOTHERE", newString: "z" },
+      { file_path: "ap/x.ts", old_string:"p = 1", new_string:"p = 11" },
+      { file_path: "ap/y.ts", old_string:"NOTHERE", new_string:"z" },
     ] });
     check("apply_patch aborts atomically on a bad edit", apAbort.isError === true && textOf(apAbort).includes("aborted") && (await ctx.fs.read("ap/x.ts")).content === "export const p = 1;\n");
 
     await ctx.fs.writeAtomic("ap/g.ts", "export function g() {\n  return 1;\n}\n");
-    const apSyn = await ap.handler({ edits: [{ path: "ap/g.ts", oldString: "  return 1;\n}", newString: "  return 1;" }] });
+    const apSyn = await ap.handler({ edits: [{ file_path: "ap/g.ts", old_string:"  return 1;\n}", new_string:"  return 1;" }] });
     check("apply_patch enforces syntax guard", apSyn.isError === true && (await ctx.fs.read("ap/g.ts")).content.includes("}"));
-    const apForced = await ap.handler({ validate: false, edits: [{ path: "ap/g.ts", oldString: "  return 1;\n}", newString: "  return 1;" }] });
+    const apForced = await ap.handler({ validate: false, edits: [{ file_path: "ap/g.ts", old_string:"  return 1;\n}", new_string:"  return 1;" }] });
     check("apply_patch validate:false overrides", !apForced.isError && !(await ctx.fs.read("ap/g.ts")).content.includes("}"));
 
     await ctx.fs.writeAtomic("ap/amb.ts", "const dup = 1; const x = dup + dup;\n");
-    const apAmb = await ap.handler({ edits: [{ path: "ap/amb.ts", oldString: "dup", newString: "D" }] });
+    const apAmb = await ap.handler({ edits: [{ file_path: "ap/amb.ts", old_string:"dup", new_string:"D" }] });
     check("apply_patch rejects ambiguous edit", apAmb.isError === true && textOf(apAmb).includes("not unique"));
 
-    const apEscape = await ap.handler({ edits: [{ path: "../escape.ts", oldString: "a", newString: "b" }] });
+    const apEscape = await ap.handler({ edits: [{ file_path: "../escape.ts", old_string: "a", new_string: "b" }] });
     check("apply_patch blocks path escape", apEscape.isError === true);
 
     // Case-variant paths to the SAME file must coalesce (no lost edit) on a
@@ -540,8 +540,8 @@ async function main(): Promise<void> {
     if (process.platform === "win32" || process.platform === "darwin") {
       await ctx.fs.writeAtomic("ap/cv.ts", "const A = 1;\nconst C = 2;\n");
       const apCv = await ap.handler({ edits: [
-        { path: "ap/cv.ts", oldString: "A = 1", newString: "A = 11" },
-        { path: "ap/CV.ts", oldString: "C = 2", newString: "C = 22" },
+        { file_path: "ap/cv.ts", old_string:"A = 1", new_string:"A = 11" },
+        { file_path: "ap/CV.ts", old_string:"C = 2", new_string:"C = 22" },
       ] });
       check("apply_patch coalesces case-variant paths", !apCv.isError && (await ctx.fs.read("ap/cv.ts")).content === "const A = 11;\nconst C = 22;\n");
     } else {
@@ -604,17 +604,23 @@ async function main(): Promise<void> {
     const typed = await cs.handler({ pattern: "class", path: "srch", type: "ts" });
     check("code_search type filter", textOf(typed).includes("srch/b.ts") && !textOf(typed).includes(".txt"));
 
-    const contentRes = await cs.handler({ pattern: "beta", path: "srch", outputMode: "content" });
+    const contentRes = await cs.handler({ pattern: "beta", path: "srch", output_mode: "content" });
     check("code_search content mode", textOf(contentRes).includes("srch/a.ts:2:const beta = 1;"));
 
-    const countRes = await cs.handler({ pattern: "alpha", path: "srch", outputMode: "count" });
+    const countRes = await cs.handler({ pattern: "alpha", path: "srch", output_mode: "count" });
     check("code_search count mode", textOf(countRes).includes("srch/a.ts: 1") && textOf(countRes).includes("srch/c.txt: 1"));
 
-    const ci = await cs.handler({ pattern: "ALPHA", path: "srch", caseInsensitive: true });
+    const ci = await cs.handler({ pattern: "ALPHA", path: "srch", "-i": true });
     check("code_search case-insensitive", textOf(ci).includes("srch/a.ts"));
 
-    const ctxRes = await cs.handler({ pattern: "beta", path: "srch", outputMode: "content", context: 1 });
+    const ctxRes = await cs.handler({ pattern: "beta", path: "srch", output_mode: "content", "-C": 1 });
     check("code_search context lines", textOf(ctxRes).includes("srch/a.ts-1-") && textOf(ctxRes).includes("srch/a.ts:2:"));
+
+    // Grep-parity flags: -o (only matching) and -n (toggle line numbers).
+    const oOnly = textOf(await cs.handler({ pattern: "alpha", path: "srch", output_mode: "content", "-o": true }));
+    check("code_search -o returns only the matched text", oOnly.includes("srch/a.ts:1:alpha") && !oOnly.includes("function"));
+    const noNum = textOf(await cs.handler({ pattern: "beta", path: "srch", output_mode: "content", "-n": false }));
+    check("code_search -n false omits line numbers", noNum.includes("srch/a.ts:const beta") && !/srch\/a\.ts:\d+:/.test(noNum));
 
     const none = await cs.handler({ pattern: "zzzznope", path: "srch" });
     check("code_search no match", textOf(none).includes("No matches"));
@@ -625,7 +631,7 @@ async function main(): Promise<void> {
     check("code_search skips node_modules implicitly", !textOf(await cs.handler({ pattern: "alpha" })).includes("node_modules"));
 
     // Zero-width regex in count+multiline must terminate (no infinite loop).
-    const zw = await cs.handler({ pattern: "\\w*", path: "srch", outputMode: "count", multiline: true });
+    const zw = await cs.handler({ pattern: "\\w*", path: "srch", output_mode: "count", multiline: true });
     check("code_search zero-width regex terminates", !zw.isError);
 
     // Scanner must not follow a symlinked scope out of the workspace root.

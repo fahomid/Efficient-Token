@@ -29,33 +29,37 @@ export function codeSearchPlugin(): Plugin {
         name: "code_search",
         title: "Search code",
         description:
-          "Regex search across the workspace (like ripgrep/grep). Returns matching file paths (default), matching lines (outputMode=content), or per-file counts (outputMode=count) — NOT whole files. Filter with glob (e.g. \"**/*.ts\") or type (e.g. \"ts\"). Prefer this over reading many files to find where something is. Skips node_modules/.git/build dirs.",
+          "Regex search across the workspace, mirroring Claude's Grep (ripgrep): same params (output_mode, -i, -A/-B/-C, -n, -o, head_limit, glob, type, multiline). Returns matching file paths (default), matching lines (output_mode=content), or per-file counts (output_mode=count) — NOT whole files. Prefer this over reading many files to find where something is. Skips node_modules/.git/build dirs.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           pattern: z.string().min(1).describe("Regular expression to search for."),
-          path: z.string().optional().describe("File or directory to scope the search to (relative). Default: whole workspace."),
+          path: z.string().optional().describe("File or directory to scope the search to. Default: whole workspace."),
           glob: z.string().optional().describe('Only search files matching this glob, e.g. "*.ts" or "src/**/*.tsx".'),
           type: z.string().optional().describe('Only search this file type, e.g. "ts", "py", "go".'),
-          outputMode: z
+          output_mode: z
             .enum(["content", "files_with_matches", "count"])
             .optional()
             .describe('"files_with_matches" (default) | "content" (matching lines) | "count".'),
-          caseInsensitive: z.boolean().optional().describe("Case-insensitive match (-i)."),
-          context: z.number().int().min(0).optional().describe("Lines of context before AND after each match (content mode)."),
-          contextBefore: z.number().int().min(0).optional().describe("Lines of context before each match (content mode)."),
-          contextAfter: z.number().int().min(0).optional().describe("Lines of context after each match (content mode)."),
+          "-i": z.boolean().optional().describe("Case-insensitive match."),
+          "-A": z.number().int().min(0).optional().describe("Lines of context AFTER each match (content mode)."),
+          "-B": z.number().int().min(0).optional().describe("Lines of context BEFORE each match (content mode)."),
+          "-C": z.number().int().min(0).optional().describe("Lines of context before AND after each match (content mode)."),
+          "-n": z.boolean().optional().describe("Show line numbers in content output (default true)."),
+          "-o": z.boolean().optional().describe("Output only the matched parts, one per line (content mode)."),
           multiline: z.boolean().optional().describe("Let the pattern span lines (dot matches newline)."),
-          headLimit: z.number().int().positive().optional().describe(`Cap results (default ${DEFAULT_HEAD}).`),
+          head_limit: z.number().int().positive().optional().describe(`Cap results (default ${DEFAULT_HEAD}).`),
         },
         handler: async (args) => {
           try {
             const pattern = String(args.pattern);
-            const mode = (args.outputMode as string | undefined) ?? "files_with_matches";
-            const insensitive = args.caseInsensitive === true;
+            const mode = (args["output_mode"] as string | undefined) ?? "files_with_matches";
+            const insensitive = args["-i"] === true;
             const multiline = args.multiline === true;
-            const head = args.headLimit === undefined ? DEFAULT_HEAD : Number(args.headLimit);
-            const before = numOr(args.contextBefore, numOr(args.context, 0));
-            const after = numOr(args.contextAfter, numOr(args.context, 0));
+            const head = args["head_limit"] === undefined ? DEFAULT_HEAD : Number(args["head_limit"]);
+            const before = numOr(args["-B"], numOr(args["-C"], 0));
+            const after = numOr(args["-A"], numOr(args["-C"], 0));
+            const showLineNo = args["-n"] !== false; // Grep -n defaults to true
+            const onlyMatching = args["-o"] === true;
 
             let lineRe: RegExp;
             let blockRe: RegExp;
@@ -117,6 +121,7 @@ export function codeSearchPlugin(): Plugin {
             const out: string[] = [];
             let shown = 0;
             let limited = false;
+            const oRe = onlyMatching ? new RegExp(pattern, `g${insensitive ? "i" : ""}`) : null;
             for (const f of scan.files) {
               if (limited) break;
               const content = await readText(ctx, f.rel);
@@ -127,12 +132,27 @@ export function codeSearchPlugin(): Plugin {
                 if (lineRe.test(lines[i]!)) matched.add(i);
               }
               if (matched.size === 0) continue;
+              if (oRe) {
+                // -o: emit only the matched substrings, one per match (no context).
+                for (const i of [...matched].sort((a, b) => a - b)) {
+                  if (limited) break;
+                  oRe.lastIndex = 0;
+                  let m: RegExpExecArray | null;
+                  while ((m = oRe.exec(lines[i]!)) !== null) {
+                    out.push(`${f.rel}${showLineNo ? `:${i + 1}` : ""}:${truncate(m[0], MAX_LINE)}`);
+                    if (m.index === oRe.lastIndex) oRe.lastIndex++; // zero-width match guard
+                    if (++shown >= head) { limited = true; break; }
+                  }
+                }
+                continue;
+              }
               for (const [s, e] of mergeRanges([...matched], before, after, lines.length)) {
                 if (out.length > 0) out.push("--");
                 for (let i = s; i <= e && !limited; i++) {
                   const hit = matched.has(i);
                   const sep = hit ? ":" : "-";
-                  out.push(`${f.rel}${sep}${i + 1}${sep}${truncate(lines[i]!, MAX_LINE)}`);
+                  const loc = showLineNo ? `${sep}${i + 1}` : "";
+                  out.push(`${f.rel}${loc}${sep}${truncate(lines[i]!, MAX_LINE)}`);
                   if (hit && ++shown >= head) limited = true;
                 }
               }

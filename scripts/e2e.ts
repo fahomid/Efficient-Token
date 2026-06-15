@@ -108,7 +108,7 @@ async function main(): Promise<void> {
 
     const read = await client.callTool({
       name: "code_read",
-      arguments: { path: "sample.ts", symbol: "add" },
+      arguments: { file_path: "sample.ts", symbol: "add" },
     });
     const readTxt = resultText(read);
     check(
@@ -119,43 +119,43 @@ async function main(): Promise<void> {
     // write -> read -> edit -> read round-trip over the wire
     const wrote = await client.callTool({
       name: "code_write",
-      arguments: { path: "gen/hello.txt", content: "one\ntwo\n" },
+      arguments: { file_path: "gen/hello.txt", content: "one\ntwo\n" },
     });
     check("code_write creates a file over the wire", !wrote.isError && resultText(wrote).includes("Created"));
-    const readBack = await client.callTool({ name: "code_read", arguments: { path: "gen/hello.txt" } });
+    const readBack = await client.callTool({ name: "code_read", arguments: { file_path:"gen/hello.txt" } });
     check("written file reads back", resultText(readBack).includes("two"));
     const edited = await client.callTool({
       name: "code_edit",
-      arguments: { path: "gen/hello.txt", oldString: "two", newString: "TWO" },
+      arguments: { file_path: "gen/hello.txt", old_string: "two", new_string: "TWO" },
     });
     check("code_edit applies over the wire", !edited.isError && resultText(edited).includes("replacement"));
-    const confirm = await client.callTool({ name: "code_read", arguments: { path: "gen/hello.txt" } });
-    check("edit persisted", resultText(confirm).includes("TWO") && !resultText(confirm).includes("| two"));
+    const confirm = await client.callTool({ name: "code_read", arguments: { file_path: "gen/hello.txt" } });
+    check("edit persisted", resultText(confirm).includes("TWO") && !resultText(confirm).includes("two"));
 
     // syntax recovery guard over the wire: a brace-breaking edit is refused and rolled back
-    await client.callTool({ name: "code_write", arguments: { path: "gen/g.ts", content: "export function g() {\n  return 1;\n}\n" } });
-    const breakEdit = await client.callTool({ name: "code_edit", arguments: { path: "gen/g.ts", oldString: "  return 1;\n}", newString: "  return 1;" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/g.ts", content: "export function g() {\n  return 1;\n}\n" } });
+    const breakEdit = await client.callTool({ name: "code_edit", arguments: { file_path: "gen/g.ts", old_string: "  return 1;\n}", new_string: "  return 1;" } });
     check("code_edit syntax guard rejects over the wire", breakEdit.isError === true && resultText(breakEdit).includes("syntax error"));
-    const stillValid = await client.callTool({ name: "code_read", arguments: { path: "gen/g.ts", symbol: "g" } });
+    const stillValid = await client.callTool({ name: "code_read", arguments: { file_path:"gen/g.ts", symbol: "g" } });
     check("file unchanged after guarded rejection", resultText(stillValid).includes("return 1;") && resultText(stillValid).includes("}"));
 
     // apply_patch: atomic multi-file batch over the wire
-    await client.callTool({ name: "code_write", arguments: { path: "gen/p1.ts", content: "export const one = 1;\n" } });
-    await client.callTool({ name: "code_write", arguments: { path: "gen/p2.ts", content: "export const two = 2;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/p1.ts", content: "export const one = 1;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/p2.ts", content: "export const two = 2;\n" } });
     const patched = await client.callTool({
       name: "apply_patch",
       arguments: { edits: [
-        { path: "gen/p1.ts", oldString: "one = 1", newString: "one = 11" },
-        { path: "gen/p2.ts", oldString: "two = 2", newString: "two = 22" },
+        { file_path: "gen/p1.ts", old_string: "one = 1", new_string: "one = 11" },
+        { file_path: "gen/p2.ts", old_string: "two = 2", new_string: "two = 22" },
       ] },
     });
     check("apply_patch applies a batch over the wire", !patched.isError && resultText(patched).includes("2 file(s)"));
-    const p1 = await client.callTool({ name: "code_read", arguments: { path: "gen/p1.ts" } });
-    const p2 = await client.callTool({ name: "code_read", arguments: { path: "gen/p2.ts" } });
+    const p1 = await client.callTool({ name: "code_read", arguments: { file_path:"gen/p1.ts" } });
+    const p2 = await client.callTool({ name: "code_read", arguments: { file_path:"gen/p2.ts" } });
     check("apply_patch batch persisted both files", resultText(p1).includes("one = 11") && resultText(p2).includes("two = 22"));
     const editEscape = await client.callTool({
       name: "code_edit",
-      arguments: { path: "../../../etc/hosts", oldString: "a", newString: "b" },
+      arguments: { file_path: "../../../etc/hosts", old_string: "a", new_string: "b" },
     });
     check("code_edit blocks path traversal over the wire", editEscape.isError === true);
 
@@ -165,12 +165,12 @@ async function main(): Promise<void> {
       arguments: { path: "sample.ts", symbol: "add", newSource: "export function add(a: number, b: number): number {\n  return a + b + 1;\n}" },
     });
     check("replace_symbol rewrites a definition over the wire", !rsWire.isError && resultText(rsWire).includes("Replaced function add"));
-    const rsConfirm = await client.callTool({ name: "code_read", arguments: { path: "sample.ts", symbol: "add" } });
+    const rsConfirm = await client.callTool({ name: "code_read", arguments: { file_path:"sample.ts", symbol: "add" } });
     check("replace_symbol persisted", resultText(rsConfirm).includes("return a + b + 1;"));
 
     const searched = await client.callTool({
       name: "code_search",
-      arguments: { pattern: "function add", outputMode: "content" },
+      arguments: { pattern: "function add", output_mode: "content" },
     });
     check("code_search finds over the wire", resultText(searched).includes("sample.ts:") && resultText(searched).includes("function add"));
 
@@ -187,35 +187,35 @@ async function main(): Promise<void> {
     const symFound = await client.callTool({ name: "symbol_find", arguments: { name: "Greeter" } });
     check("symbol_find over the wire", !symFound.isError && resultText(symFound).includes("sample.ts:") && resultText(symFound).includes("class Greeter"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "gen/caller.ts", content: "export function caller() {\n  return add(1, 2) + add(3, 4);\n}\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/caller.ts", content: "export function caller() {\n  return add(1, 2) + add(3, 4);\n}\n" } });
     const callsRes = await client.callTool({ name: "call_sites", arguments: { symbol: "add", path: "gen" } });
     check("call_sites over the wire", !callsRes.isError && resultText(callsRes).includes("gen/caller.ts:2") && resultText(callsRes).includes("caller"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "gen/todo.ts", content: "// TODO: wire this up\nexport const z = 1;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/todo.ts", content: "// TODO: wire this up\nexport const z = 1;\n" } });
     const markers = await client.callTool({ name: "marker_inventory", arguments: { path: "gen" } });
     check("marker_inventory over the wire", !markers.isError && resultText(markers).includes("TODO (1)") && resultText(markers).includes("wire this up"));
 
     const traced = await client.callTool({ name: "trace_locate", arguments: { trace: "Error\n    at add (sample.ts:2:5)\n" } });
     check("trace_locate over the wire", !traced.isError && resultText(traced).includes("sample.ts:2") && resultText(traced).includes("return a + b"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "gen/dep.ts", content: "export const dep = 1;\n" } });
-    await client.callTool({ name: "code_write", arguments: { path: "gen/user.ts", content: "import { dep } from './dep.js';\nexport const u = dep;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/dep.ts", content: "export const dep = 1;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/user.ts", content: "import { dep } from './dep.js';\nexport const u = dep;\n" } });
     const imap = await client.callTool({ name: "import_map", arguments: { path: "gen/dep.ts", direction: "importers" } });
     check("import_map over the wire", !imap.isError && resultText(imap).includes("gen/user.ts:1"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "gen/types.ts", content: "export interface Inner { v: number; }\nexport interface Outer { inner: Inner; }\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/types.ts", content: "export interface Inner { v: number; }\nexport interface Outer { inner: Inner; }\n" } });
     const tclo = await client.callTool({ name: "type_closure", arguments: { symbol: "Outer", path: "gen" } });
     check("type_closure over the wire", !tclo.isError && resultText(tclo).includes("interface Outer") && resultText(tclo).includes("interface Inner"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "gen/ch.ts", content: "export function leaf() { return 1; }\nexport function root() {\n  return leaf();\n}\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"gen/ch.ts", content: "export function leaf() { return 1; }\nexport function root() {\n  return leaf();\n}\n" } });
     const chy = await client.callTool({ name: "call_hierarchy", arguments: { symbol: "root", path: "gen" } });
     check("call_hierarchy over the wire", !chy.isError && resultText(chy).includes("callees (1)") && resultText(chy).includes("leaf"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "mv/src.ts", content: "export function widget() {\n  return 1;\n}\n" } });
-    await client.callTool({ name: "code_write", arguments: { path: "mv/dst.ts", content: "export const k = 0;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"mv/src.ts", content: "export function widget() {\n  return 1;\n}\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"mv/dst.ts", content: "export const k = 0;\n" } });
     const moved = await client.callTool({ name: "move_symbol", arguments: { symbol: "widget", from: "mv/src.ts", to: "mv/dst.ts" } });
     check("move_symbol over the wire", !moved.isError && resultText(moved).includes("Moved function widget"));
-    const dstRead = await client.callTool({ name: "code_read", arguments: { path: "mv/dst.ts", symbol: "widget" } });
+    const dstRead = await client.callTool({ name: "code_read", arguments: { file_path:"mv/dst.ts", symbol: "widget" } });
     check("move_symbol persisted", resultText(dstRead).includes("function widget"));
 
     const readMany = await client.callTool({ name: "read_many", arguments: { reads: [{ path: "sample.ts", symbol: "add" }, { path: "sample.ts", symbol: "Greeter" }] } });
@@ -268,10 +268,10 @@ async function main(): Promise<void> {
     const noteRead = await client.callTool({ name: "note_read", arguments: { name: "scratch" } });
     check("note write/read round-trips over the wire", !noteRead.isError && resultText(noteRead).includes("remember this"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "ren/r.ts", content: "export const foo = 1;\nexport const z = foo + foo;\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"ren/r.ts", content: "export const foo = 1;\nexport const z = foo + foo;\n" } });
     const renamed = await client.callTool({ name: "project_rename", arguments: { oldName: "foo", newName: "bar", path: "ren" } });
     check("project_rename over the wire", !renamed.isError && resultText(renamed).includes("3 occurrence(s)"));
-    const renRead = await client.callTool({ name: "code_read", arguments: { path: "ren/r.ts" } });
+    const renRead = await client.callTool({ name: "code_read", arguments: { file_path:"ren/r.ts" } });
     check("project_rename persisted", resultText(renRead).includes("bar = 1") && resultText(renRead).includes("bar + bar") && !resultText(renRead).includes("foo"));
 
     const viewed = await client.callTool({ name: "view_image", arguments: { paths: ["pixel.png"] } });
@@ -284,28 +284,28 @@ async function main(): Promise<void> {
     const minfo = await client.callTool({ name: "media_info", arguments: { paths: ["pixel.png"] } });
     check("media_info over the wire", !minfo.isError && resultText(minfo).includes("png 1x1"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "theme.css", content: ":root {\n  --color-bg: #ffffff;\n  --gap: 12px;\n}\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"theme.css", content: ":root {\n  --color-bg: #ffffff;\n  --gap: 12px;\n}\n" } });
     const dtoks = await client.callTool({ name: "design_tokens", arguments: { paths: ["theme.css"] } });
     check("design_tokens over the wire", !dtoks.isError && resultText(dtoks).includes("--color-bg = #ffffff") && resultText(dtoks).includes("12px"));
 
     const contrast = await client.callTool({ name: "color_contrast", arguments: { color: "#000", against: "#fff" } });
     check("color_contrast over the wire", !contrast.isError && resultText(contrast).includes("21:1"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "logo.svg", content: '<svg viewBox="0 0 16 16"><path d="M1 1"/></svg>\n' } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"logo.svg", content: '<svg viewBox="0 0 16 16"><path d="M1 1"/></svg>\n' } });
     const svgd = await client.callTool({ name: "svg_digest", arguments: { path: "logo.svg" } });
     check("svg_digest over the wire", !svgd.isError && resultText(svgd).includes("viewBox: 0 0 16 16") && resultText(svgd).includes("path×1"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "fonts.css", content: "@font-face { font-family: 'Roboto'; font-weight: 700; }\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"fonts.css", content: "@font-face { font-family: 'Roboto'; font-weight: 700; }\n" } });
     const finfo = await client.callTool({ name: "font_info", arguments: { paths: ["fonts.css"] } });
     check("font_info over the wire", !finfo.isError && resultText(finfo).includes('family "Roboto"') && resultText(finfo).includes("weight 700"));
 
-    await client.callTool({ name: "code_write", arguments: { path: "vars.css", content: ":root { --a: 1px; }\n.x { width: var(--b); }\n" } });
+    await client.callTool({ name: "code_write", arguments: { file_path:"vars.css", content: ":root { --a: 1px; }\n.x { width: var(--b); }\n" } });
     const tusage = await client.callTool({ name: "token_usage", arguments: { paths: ["vars.css"] } });
     check("token_usage over the wire", !tusage.isError && resultText(tusage).includes("--a") && resultText(tusage).includes("--b"));
 
     const escaped = await client.callTool({
       name: "code_read",
-      arguments: { path: "../../../etc/hosts" },
+      arguments: { file_path: "../../../etc/hosts" },
     });
     check(
       "sandbox rejects path traversal over the wire",

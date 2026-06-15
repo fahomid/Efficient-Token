@@ -1,6 +1,11 @@
 import { errMessage, fail, ok } from "./result.js";
-import { numberLines, splitLines, truncate } from "./text.js";
+import { splitLines, truncate } from "./text.js";
 import type { CoreContext, ToolResult } from "./contract.js";
+
+/** Number lines in Claude `Read`'s cat -n style: right-aligned number, a tab, the line. */
+function catN(lines: string[], startNo: number): string {
+  return lines.map((line, i) => `${String(startNo + i).padStart(6)}\t${line}`).join("\n");
+}
 
 export interface ReadTarget {
   path: string;
@@ -73,7 +78,7 @@ async function readSymbol(
 ): Promise<ToolResult> {
   const matches = await ctx.ast.findSymbol(filePath, content, symbol);
   if (matches === undefined) {
-    return fail(`${rel} — no grammar for this file type; use a line range (startLine/endLine) instead.`);
+    return fail(`${rel} — no grammar for this file type; use offset/limit instead.`);
   }
   const target = matches[0];
   if (target === undefined) {
@@ -132,7 +137,7 @@ function boundLines(
     used += ln.length + 1;
     if (used >= budgetChars) break;
   }
-  return { numbered: numberLines(out, startLineNo), shown: out.length, omitted: slice.length - out.length };
+  return { numbered: catN(out, startLineNo), shown: out.length, omitted: slice.length - out.length };
 }
 
 async function readWhole(
@@ -144,7 +149,7 @@ async function readWhole(
   maxTokens: number,
 ): Promise<ToolResult> {
   if (ctx.budget.fits(content, maxTokens)) {
-    return ok(`${rel} — ${lines.length} line(s)\n${numberLines(lines, 1)}`);
+    return ok(`${rel} — ${lines.length} line(s)\n${catN(lines, 1)}`);
   }
 
   // Over budget: degrade to outline + a BOUNDED head, never a silent full dump.
@@ -165,7 +170,7 @@ async function readWhole(
   const parts: string[] = [
     `${rel} — ${lines.length} line(s), ~${est} tokens exceeds budget ${maxTokens}. ` +
       `Returning an outline + the first ${head.length} line(s)${truncatedAny ? " (long lines truncated)" : ""}.`,
-    `Request a specific symbol (symbol=…) or line range (startLine/endLine) for the rest.`,
+    `Request a specific symbol (symbol=…) or line range (offset/limit) for the rest.`,
   ];
   if (symbols && symbols.length > 0) {
     parts.push("", "Outline:");
@@ -174,7 +179,7 @@ async function readWhole(
       parts.push(`  L${s.startLine}-${s.endLine}  ${s.kind} ${container}${s.name}`);
     }
   }
-  parts.push("", "First lines:", numberLines(head, 1));
+  parts.push("", "First lines:", catN(head, 1));
   return ok(parts.join("\n"));
 }
 

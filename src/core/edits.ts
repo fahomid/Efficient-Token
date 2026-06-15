@@ -36,13 +36,13 @@ export function applyStringEdit(
 export function editFailureMessage(rel: string, r: Extract<EditResult, { ok: false }>): string {
   switch (r.reason) {
     case "empty":
-      return `${rel} — oldString must not be empty.`;
+      return `${rel} — old_string must not be empty.`;
     case "identical":
-      return `${rel} — oldString and newString are identical; nothing to change.`;
+      return `${rel} — old_string and new_string are identical; nothing to change.`;
     case "not-found":
-      return `${rel} — oldString not found. Read the file and copy the exact text, including whitespace.`;
+      return `${rel} — old_string not found. Read the file and copy the exact text, including whitespace.`;
     case "ambiguous":
-      return `${rel} — oldString is not unique (${r.matches} matches). Add surrounding context to disambiguate, or set replaceAll=true.`;
+      return `${rel} — old_string is not unique (${r.matches} matches). Add surrounding context to disambiguate, or set replace_all=true.`;
   }
 }
 

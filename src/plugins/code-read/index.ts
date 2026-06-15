@@ -18,23 +18,30 @@ export function codeReadPlugin(): Plugin {
         name: "code_read",
         title: "Read code",
         description:
-          "Read source faithfully but minimally: a single named symbol (symbol), a line range (startLine/endLine), or a whole file that degrades to an outline + head when it exceeds the token budget. Prefer symbol/range over whole-file. Output is line-numbered real source — never summarized.",
+          "Like Claude's Read (same file_path/offset/limit, cat-n output) but minimal: also extract a single named symbol, and a whole-file read degrades to an outline + head when it exceeds the token budget instead of dumping it. Prefer symbol or offset/limit over whole-file. Output is real source — never summarized.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
-          path: z.string().describe("File path relative to the workspace root."),
-          symbol: z.string().optional().describe("Extract a single symbol (function/class/method/type) by name."),
-          startLine: z.number().int().positive().optional().describe("1-based start line for a range read."),
-          endLine: z.number().int().positive().optional().describe("1-based end line for a range read."),
+          file_path: z.string().describe("File path (absolute, or relative to the workspace root), like Claude's Read."),
+          offset: z.number().int().positive().optional().describe("1-based line to start reading from (like Read)."),
+          limit: z.number().int().positive().optional().describe("Number of lines to read from offset (like Read)."),
+          symbol: z.string().optional().describe("Extract a single symbol (function/class/method/type) by name — a superset of Read."),
           maxTokens: z.number().int().positive().optional().describe("Override the whole-file token budget before it degrades."),
         },
-        handler: async (args) =>
-          readTarget(ctx, {
-            path: String(args.path),
+        handler: async (args) => {
+          const offset = args.offset === undefined ? undefined : Number(args.offset);
+          const limit = args.limit === undefined ? undefined : Number(args.limit);
+          // Map Read's offset/limit onto an inclusive line range.
+          const ranged = offset !== undefined || limit !== undefined;
+          const startLine = ranged ? offset ?? 1 : undefined;
+          const endLine = ranged && limit !== undefined ? (startLine ?? 1) + limit - 1 : undefined;
+          return readTarget(ctx, {
+            path: String(args.file_path),
             symbol: args.symbol === undefined ? undefined : String(args.symbol),
-            startLine: args.startLine === undefined ? undefined : Number(args.startLine),
-            endLine: args.endLine === undefined ? undefined : Number(args.endLine),
+            startLine,
+            endLine,
             maxTokens: args.maxTokens === undefined ? undefined : Number(args.maxTokens),
-          }),
+          });
+        },
       },
     ],
   };

@@ -47,14 +47,14 @@ export function applyPatchPlugin(): Plugin {
           edits: z
             .array(
               z.object({
-                path: z.string().describe("File path relative to the workspace root."),
-                oldString: z.string().min(1).describe("Exact text to replace (verbatim)."),
-                newString: z.string().describe("Replacement text (may be empty)."),
-                replaceAll: z.boolean().optional().describe("Replace every occurrence in this file."),
+                file_path: z.string().describe("File path (absolute, or relative to the workspace root)."),
+                old_string: z.string().min(1).describe("Exact text to replace (verbatim)."),
+                new_string: z.string().describe("Replacement text (may be empty)."),
+                replace_all: z.boolean().optional().describe("Replace every occurrence in this file."),
               }),
             )
             .min(1)
-            .describe("Ordered list of edits to apply atomically."),
+            .describe("Ordered list of edits to apply atomically (each like a code_edit)."),
           validate: z
             .boolean()
             .optional()
@@ -63,10 +63,10 @@ export function applyPatchPlugin(): Plugin {
         handler: async (args) => {
           try {
             const edits = args.edits as Array<{
-              path: string;
-              oldString: string;
-              newString: string;
-              replaceAll?: boolean;
+              file_path: string;
+              old_string: string;
+              new_string: string;
+              replace_all?: boolean;
             }>;
 
             // 1) Apply every edit IN MEMORY (read each file once), aborting on the
@@ -75,7 +75,7 @@ export function applyPatchPlugin(): Plugin {
             const order: string[] = [];
             for (let i = 0; i < edits.length; i++) {
               const e = edits[i]!;
-              const abs = ctx.paths.resolve(String(e.path));
+              const abs = ctx.paths.resolve(String(e.file_path));
               // Key by the file's real on-disk identity so case-variant paths
               // (Windows/macOS) or symlink aliases map to ONE working copy.
               let key: string;
@@ -86,12 +86,12 @@ export function applyPatchPlugin(): Plugin {
               }
               let w = work.get(key);
               if (!w) {
-                const { content } = await ctx.fs.readRaw(String(e.path));
+                const { content } = await ctx.fs.readRaw(String(e.file_path));
                 w = { rel: ctx.paths.relative(abs), original: content, current: content, replacements: 0 };
                 work.set(key, w);
                 order.push(key);
               }
-              const r = applyStringEdit(w.current, String(e.oldString), String(e.newString), e.replaceAll === true);
+              const r = applyStringEdit(w.current, String(e.old_string), String(e.new_string), e.replace_all === true);
               if (!r.ok) {
                 return fail(`apply_patch aborted (no files changed): edit #${i + 1} — ${editFailureMessage(w.rel, r)}`);
               }
