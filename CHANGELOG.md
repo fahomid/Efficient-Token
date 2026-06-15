@@ -8,34 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Tool **bundles** (`EFFICIENT_TOKEN_GROUPS`): register only the tool groups a
-  project uses, dropping the per-turn description cost of bundles it never needs.
-  Bundles: `core` (always loaded) and `design`.
-- In-session **savings ledger**, surfaced by `health`: an estimate of the tokens
-  saved by distilled reads (exact baseline — whole-file size vs what was returned).
+- Tool bundles (`EFFICIENT_TOKEN_GROUPS`): register only the tool groups a project
+  uses, dropping the per-turn description cost of bundles it never needs. The
+  bundles are `core` (always loaded) and `design`.
+- In-session savings ledger, surfaced by `health`: an estimate of the tokens saved
+  by distilled reads. The baseline is exact, comparing whole-file size against what
+  was returned.
 - `npm run toolcost`: a deterministic report of the fixed per-turn token cost of
   every tool definition, broken down by bundle.
 
 ### Changed
-- Core read/edit/write/search/glob tools aligned to Claude Code's built-ins
-  (matching `file_path`/`offset`/`limit`/`old_string`/`new_string`/`pattern` shapes)
-  so they are drop-in replacements that cut tokens in the middle.
-- Trimmed filler from the costliest tool descriptions (lower fixed per-turn cost).
+- Core read/edit/write/search/glob tools aligned to Claude Code's built-ins,
+  matching the `file_path`/`offset`/`limit`/`old_string`/`new_string`/`pattern`
+  shapes, so they are drop-in replacements that cut tokens in the middle.
+- Trimmed filler from the costliest tool descriptions, lowering the fixed per-turn
+  cost.
 
 ### Fixed
-- The `core` bundle now **always** loads, so an additive `EFFICIENT_TOKEN_GROUPS`
-  value (e.g. `design`) or a typo can never silently drop the core toolset.
-- A delimiter-only `EFFICIENT_TOKEN_GROUPS` value (e.g. `","`) is treated as unset
+- The `core` bundle now always loads, so an additive `EFFICIENT_TOKEN_GROUPS`
+  value such as `design`, or a typo, can never silently drop the core toolset.
+- A delimiter-only `EFFICIENT_TOKEN_GROUPS` value such as `","` is treated as unset
   (load all) instead of registering zero tools.
-- `read_many` no longer counts a shared file's savings baseline once per target
-  (it opted out of per-target accounting — it under-counts rather than overstates).
-- Neutral wording for the startup "skipped" log (was mislabeled "not entitled" for
-  bundle skips).
+- `read_many` no longer counts a shared file's savings baseline once per target.
+  It opted out of per-target accounting, so it under-counts rather than overstates.
+- Neutral wording for the startup "skipped" log, which was mislabeled "not
+  entitled" for bundle skips.
 
-## [0.1.0] — 2026-06-14
+## [0.1.0] - 2026-06-14
 
 Initial release. A local-first [MCP](https://modelcontextprotocol.io) server that
-returns distilled, **faithful** results to cut LLM token usage without degrading
+returns distilled, faithful results to cut LLM token usage without degrading
 reasoning.
 
 ### Added

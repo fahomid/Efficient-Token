@@ -6,27 +6,27 @@ welcome.
 
 ## Ground rules
 
-The whole design rests on one principle and a short list of hard conventions.
-Read [`ARCHITECTURE.md`](./ARCHITECTURE.md) before writing code — it is the authoritative
-brief. The essentials:
+The design rests on one principle and a short list of hard conventions. Read
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) before writing code; it is the authoritative brief.
+The essentials:
 
 - **Faithful on reasoning paths.** Anything the model will reason over (source
-  code, document text) is returned **losslessly** — real slices, real symbols.
+  code, document text) is returned losslessly, as real slices and real symbols.
   Savings come from returning *less*, never from summarizing or paraphrasing.
 - **Deterministic, never a judgment call.** A tool detects and transforms
   deterministically. If a feature would require interpreting intent, that stays
-  with the model — the server only supplies faithful material.
+  with the model; the server only supplies faithful material.
 - **stdout is the MCP protocol stream.** Never `console.log`. All logging goes to
   stderr via the logger service.
-- **ESM + NodeNext.** Local imports MUST carry a `.js` extension in TS source.
-- **Plugins depend only on `CoreContext`** — never import another plugin. Shared
+- **ESM and NodeNext.** Local imports must carry a `.js` extension in TS source.
+- **Plugins depend only on `CoreContext`.** Never import another plugin. Shared
   capability lives in core services.
-- **Only the loader touches the SDK** and does tier/bundle gating.
+- **Only the loader touches the SDK** and does tier and bundle gating.
 - **All filesystem access goes through the path sandbox; writes are atomic.**
-- **Tools never throw into the transport** — wrap handlers and return the uniform
+- **Tools never throw into the transport.** Wrap handlers and return the uniform
   `ok` / `fail` envelope.
 - **Tool `description` text ships to the model every turn.** Keep it tight and say
-  *when to use this tool instead of a built-in*. Check the cost with
+  when to use the tool instead of a built-in. Check the cost with
   `npm run toolcost`.
 
 ## Development setup
@@ -52,19 +52,19 @@ npm run dev          # run the server from source via tsx
 
 1. Create `src/plugins/<name>/index.ts` exporting a factory that returns a
    `Plugin`. Talk only to `ctx`; set the correct `tier` and `group`.
-2. Add **one** entry to the `plugins` array in `src/index.ts` — the only edit
+2. Add one entry to the `plugins` array in `src/index.ts`. That is the only edit
    outside the new folder.
 3. Add a smoke check in `scripts/smoke.ts` and a README tool-table row.
 4. Keep the description tight; confirm the cost with `npm run toolcost`.
 
-Nothing else changes; nothing else can break — that is the point of the contract.
+Nothing else changes and nothing else can break. That is the point of the contract.
 
 ### Adding a language
 
 Grammars are WASM (`tree-sitter-wasms`). Map the file extension in
 `EXT_TO_GRAMMAR` (`src/services/ast.ts`) and, if needed, extend the
-`DEFINITION_TYPES` / `KIND_OVERRIDES` / `VALUE_DEFINITION_TYPES` tables —
-**empirically**, from real grammar output via `npm run discover`.
+`DEFINITION_TYPES`, `KIND_OVERRIDES`, and `VALUE_DEFINITION_TYPES` tables. Do this
+empirically, from real grammar output via `npm run discover`.
 
 ## Definition of Done
 
