@@ -9,12 +9,12 @@ import { execFile } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
 
-import { LANG_CASES, LANG_CHUNK } from "./langcases.js";
+import { LANG_CASES } from "./langcases.js";
 
 import { loadConfig } from "../src/core/config.js";
 import type { CoreContext, Plugin, ToolResult } from "../src/core/contract.js";
@@ -136,34 +136,6 @@ async function mkTmp(prefix: string): Promise<string> {
   return fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), prefix)));
 }
 
-/**
- * Spawn the minimal per-chunk worker (lang-chunk.ts) for one chunk of the
- * language sweep and fold its results into the totals. The worker runs in its own
- * short-lived process importing only AstService, so each loads just a few grammars
- * into web-tree-sitter's WASM heap then exits and frees it. Loading all ~31
- * grammars in one process exhausts memory under newer V8 (Node 24).
- */
-async function runLangChunkChild(start: number): Promise<void> {
-  const size = Math.min(LANG_CHUNK, LANG_CASES.length - start);
-  const worker = path.join(path.dirname(fileURLToPath(import.meta.url)), "lang-chunk.ts");
-  try {
-    const { stdout } = await execFileP(process.execPath, ["--import", "tsx", worker, String(start)], {
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    let seen = false;
-    for (const raw of stdout.split("\n")) {
-      const line = raw.replace(/\s+$/, "");
-      const m = /^__LANG__ (\d+) (\d+)$/.exec(line.trim());
-      if (m) { passed += Number(m[1]); failed += Number(m[2]); seen = true; continue; }
-      if (line.length) console.log(line);
-    }
-    if (!seen) check(`lang chunk @${start}`, false, "child produced no result");
-  } catch (err) {
-    failed += size;
-    console.log(`  FAIL  lang chunk @${start} crashed — ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
 async function main(): Promise<void> {
   const root = await mkTmp("efficient-token-smoke-");
   try {
@@ -256,12 +228,20 @@ async function main(): Promise<void> {
     const noGrammar = await ctx.ast.outline("notes.txt", "plain text\n");
     check("ast.outline undefined when no grammar", noGrammar === undefined);
 
-    // --- multi-language outline coverage (isolated child processes) -------
-    // Loading every grammar in one process exhausts web-tree-sitter's shared
-    // WASM heap under newer V8 (Node 24), so the sweep runs in short-lived child
-    // processes, each loading only a chunk (see runLangChunk / LANG_CASES).
-    for (let start = 0; start < LANG_CASES.length; start += LANG_CHUNK) {
-      await runLangChunkChild(start);
+    // --- multi-language outline coverage (LANG_CASES) -------------------
+    // Run in-process. Each grammar loads into web-tree-sitter's shared WASM heap,
+    // which only grows; the full set exhausts memory under Node 24's V8 (even one
+    // large grammar like swift/scala). That is why the Node 24 CI job is
+    // non-blocking; Nodes 18/20/22 handle the whole set fine.
+    for (const { ext, code, expect } of LANG_CASES) {
+      const out = await ctx.ast.outline(`sample.${ext}`, code);
+      const names = new Set((out ?? []).map((s) => s.name));
+      if (expect) {
+        const missing = expect.filter((n) => !names.has(n));
+        check(`lang ${ext} outlines [${expect.join(",")}]`, Array.isArray(out) && missing.length === 0, `missing [${missing.join(",")}], got [${[...names].join(",")}]`);
+      } else {
+        check(`lang ${ext} parses (Tier B)`, Array.isArray(out), `got ${out === undefined ? "undefined" : "array"}`);
+      }
     }
 
     // kind correctness: "constructor" contains "struct", so it should not mislabel.
