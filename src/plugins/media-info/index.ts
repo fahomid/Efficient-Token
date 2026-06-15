@@ -11,11 +11,11 @@ const RASTER_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "webp", "avif",
 const AV_EXTS = new Set(["mp4", "mov", "webm", "mkv", "avi", "m4v", "mp3", "wav", "m4a", "aac", "ogg", "flac", "opus"]);
 
 /**
- * `media_info` — distilled facts about media files (dimensions, format, size;
- * and for video/audio: duration, fps, codec) WITHOUT loading the bytes. Raster
- * dimensions are read zero-dep from headers; video/audio details use `ffprobe`
- * if it is on PATH. Optionally maps a duration to a frame count at a given fps.
- * Read-only. Free tier.
+ * Reports facts about media files (dimensions, format, size; for video and audio
+ * also duration, fps, codec) without loading the bytes. Raster dimensions come
+ * from the file header with no extra dependency. Video and audio details use
+ * `ffprobe` when it is on PATH. Optionally maps a duration to a frame count at a
+ * given fps.
  */
 export function mediaInfoPlugin(): Plugin {
   let ctx: CoreContext;
@@ -32,7 +32,7 @@ export function mediaInfoPlugin(): Plugin {
         name: "media_info",
         title: "Media info",
         description:
-          "Report facts about image/video/audio files — format, dimensions, aspect ratio, byte size, and (for A/V via ffprobe if present) duration, fps, codec — instead of reading raw bytes or guessing. Pass fps to also get duration as a frame count (ceil(duration*fps)). Use this for asset sizing/aspect/timing. Read-only.",
+          "Report facts about image, video, and audio files (format, dimensions, aspect ratio, byte size, and for A/V via ffprobe if present duration, fps, codec) instead of reading raw bytes or guessing. Pass fps to also get duration as a frame count (ceil(duration*fps)). Use this for asset sizing, aspect, or timing. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           paths: z.array(z.string()).min(1).describe("Media file path(s) relative to the workspace root."),

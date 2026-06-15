@@ -2,7 +2,7 @@ import { errMessage, fail, ok } from "./result.js";
 import { splitLines, truncate } from "./text.js";
 import type { CoreContext, ToolResult } from "./contract.js";
 
-/** Number lines in Claude `Read`'s cat -n style: right-aligned number, a tab, the line. */
+/** Number lines in Claude Read's cat -n style: right-aligned number, a tab, the line. */
 function catN(lines: string[], startNo: number): string {
   return lines.map((line, i) => `${String(startNo + i).padStart(6)}\t${line}`).join("\n");
 }
@@ -19,10 +19,10 @@ export interface ReadTarget {
 }
 
 /**
- * Read one target faithfully but minimally — a single symbol, a line range, or a
- * whole file that degrades to an outline + bounded head over budget. Shared by
- * `code_read` (one target) and `read_many` (a batch). Always returns a
- * ToolResult (errors are caught and returned as `fail`, scoped to the path).
+ * Read one target faithfully but minimally: a single symbol, a line range, or a
+ * whole file that degrades to an outline plus a bounded head when over budget.
+ * Shared by code_read (one target) and read_many (a batch). Always returns a
+ * ToolResult; errors are caught and returned as `fail`, scoped to the path.
  */
 export async function readTarget(ctx: CoreContext, t: ReadTarget): Promise<ToolResult> {
   try {
@@ -44,7 +44,7 @@ export async function readTarget(ctx: CoreContext, t: ReadTarget): Promise<ToolR
 }
 
 export interface RenderReadArgs {
-  /** Real file path — used for grammar selection / AST parsing. */
+  /** Real file path, used for grammar selection and AST parsing. */
   filePath: string;
   /** The source to slice (from disk, a git revision, etc.). */
   content: string;
@@ -59,10 +59,10 @@ export interface RenderReadArgs {
 }
 
 /**
- * Render a symbol / range / whole-file view of ALREADY-LOADED content (not from
- * disk). Shared by `code_read`/`read_many` (disk) and `read_at_rev` (git). The
- * grammar is chosen from `filePath`; the content parsed/sliced is whatever the
- * caller provides.
+ * Render a symbol, range, or whole-file view of already-loaded content (not read
+ * from disk here). Shared by code_read/read_many (disk) and read_at_rev (git).
+ * The grammar is chosen from `filePath`; the content parsed and sliced is
+ * whatever the caller provides.
  */
 export async function renderRead(ctx: CoreContext, a: RenderReadArgs): Promise<ToolResult> {
   const lines = splitLines(a.content);
@@ -72,8 +72,8 @@ export async function renderRead(ctx: CoreContext, a: RenderReadArgs): Promise<T
   else result = await readWhole(ctx, a.filePath, a.content, lines, a.displayRel, a.maxTokens);
   // Ledger: baseline = whole file (what Read would return), returned = what we did.
   // read_many opts out (recordSavings=false): a file hit by several targets would
-  // otherwise be counted once per target, inflating the baseline — under-count
-  // (skip) rather than overstate.
+  // otherwise be counted once per target, inflating the baseline. We skip
+  // (under-count) rather than overstate.
   if (a.recordSavings !== false && !result.isError) {
     const returned = result.content.reduce((n, c) => n + (c.type === "text" ? c.text.length : 0), 0);
     ctx.savings.record("read", a.content.length, returned);
@@ -132,10 +132,10 @@ function readRange(
 }
 
 /**
- * Number a slice but stop once the token budget is reached — so an explicit
- * range or a huge symbol degrades to its head + an "omitted" note rather than
- * dumping a whole file. Lines are kept verbatim (faithful); only the COUNT is
- * bounded. The first line is always emitted so the result is never empty.
+ * Number a slice but stop once the token budget is reached, so an explicit range
+ * or a huge symbol degrades to its head plus an "omitted" note rather than
+ * dumping a whole file. Lines are kept verbatim; only the count is bounded. The
+ * first line is always emitted so the result is never empty.
  */
 function boundLines(
   slice: string[],
@@ -166,7 +166,7 @@ async function readWhole(
     return ok(`${rel} — ${lines.length} line(s)\n${catN(lines, 1)}`);
   }
 
-  // Over budget: degrade to outline + a BOUNDED head, never a silent full dump.
+  // Over budget: degrade to an outline plus a bounded head, never a silent full dump.
   const est = ctx.budget.estimate(content);
   const maxHeadChars = Math.max(2000, maxTokens * 4);
   const maxLineChars = 400;

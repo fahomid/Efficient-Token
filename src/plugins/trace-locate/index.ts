@@ -8,10 +8,10 @@ const DEFAULT_FRAMES = 10;
 const MAX_FRAMES = 50;
 
 /**
- * `trace_locate` — paste a stack trace / error output and get the source at each
- * `file:line` frame (a few context lines + enclosing symbol), instead of opening
- * each referenced file by hand. Same locator as check_locate, but on text YOU
- * supply (a runtime error, a CI log snippet). Read-only. Free tier.
+ * Resolves a pasted stack trace or error output to source: for each `file:line`
+ * frame it returns the code with a few context lines and the enclosing symbol,
+ * rather than opening each referenced file by hand. Uses the same locator as
+ * check_locate, but on text you supply (a runtime error, a CI log snippet).
  */
 export function traceLocatePlugin(): Plugin {
   let ctx: CoreContext;
@@ -27,7 +27,7 @@ export function traceLocatePlugin(): Plugin {
         name: "trace_locate",
         title: "Locate a stack trace",
         description:
-          "Resolve a pasted stack trace / error output to source: parse each file:line frame and return that code with a few lines of context and its enclosing symbol — instead of opening each file yourself. Only workspace files are shown (external/node_modules frames are skipped). Use this for a runtime error or CI log you have in hand; for running a check use check_locate. Read-only.",
+          "Resolve a pasted stack trace / error output to source: parse each file:line frame and return that code with a few lines of context and its enclosing symbol, instead of opening each file yourself. Only workspace files are shown (external/node_modules frames are skipped). Use this for a runtime error or CI log you have in hand; for running a check use check_locate. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           trace: z.string().min(1).describe("The stack trace or error text to resolve."),

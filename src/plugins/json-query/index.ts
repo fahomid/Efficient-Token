@@ -4,10 +4,10 @@ import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 
 /**
- * `json_query` — read just a slice of a (possibly large) JSON file by a
- * dotted/bracket path (e.g. `scripts.build`, `items[0].name`), or — with no
- * query — a shallow overview of the top-level shape. Avoids pulling a whole big
- * config/lock/fixture into context for one value. Read-only. Free tier.
+ * Reads just a slice of a (possibly large) JSON file by a dotted/bracket path
+ * (e.g. `scripts.build`, `items[0].name`). With no query, returns a shallow
+ * overview of the top-level shape. Avoids pulling a whole large config, lock, or
+ * fixture into context for one value.
  */
 export function jsonQueryPlugin(): Plugin {
   let ctx: CoreContext;

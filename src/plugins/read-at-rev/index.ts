@@ -6,10 +6,10 @@ import { renderRead } from "../../core/read.js";
 import { errMessage, fail } from "../../core/result.js";
 
 /**
- * `read_at_rev` — the historical analog of code_read: read ONE symbol / line
- * range from a file as it was at a git revision, instead of `git show
- * <ref>:file` dumping the whole file. Same faithful slice + degrade-to-outline
- * behavior as code_read. Read-only git. Free tier.
+ * The historical analog of code_read. Reads one symbol or line range from a file
+ * as it was at a git revision, instead of `git show <ref>:file` dumping the whole
+ * file. Same faithful slice and degrade-to-outline behavior as code_read, over
+ * read-only git.
  */
 export function readAtRevPlugin(): Plugin {
   let ctx: CoreContext;
@@ -25,7 +25,7 @@ export function readAtRevPlugin(): Plugin {
         name: "read_at_rev",
         title: "Read at revision",
         description:
-          'Read a file AS OF a git revision — one symbol, a line range, or the whole file (degrades to an outline over budget), instead of `git show <ref>:file` dumping everything. Pass ref (branch/commit/tag, e.g. "main", "HEAD~3", a SHA) and path; optionally symbol or startLine/endLine. Use this to see an old version of just the code you care about. Read-only git.',
+          'Read a file as of a git revision: one symbol, a line range, or the whole file (degrades to an outline over budget), instead of `git show <ref>:file` dumping everything. Pass ref (branch/commit/tag, e.g. "main", "HEAD~3", a SHA) and path; optionally symbol or startLine/endLine. Use this to see an old version of just the code you care about. Read-only git.',
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().describe("File path relative to the workspace root."),

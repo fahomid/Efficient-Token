@@ -20,7 +20,7 @@ export function imageDimensions(b: Buffer): ImageDims | undefined {
     return { format: "gif", width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
   }
   // BMP: "BM", DIB width/height (signed LE) at 18/22; height may be negative
-  // (top-down). A non-positive width is malformed -> report dims as unavailable.
+  // (top-down). A non-positive width is malformed, so report dims as unavailable.
   if (b.length >= 26 && b[0] === 0x42 && b[1] === 0x4d) {
     const w = b.readInt32LE(18);
     const h = Math.abs(b.readInt32LE(22));
@@ -61,8 +61,8 @@ export function imageDimensions(b: Buffer): ImageDims | undefined {
       // SOF0..SOF15 carry the frame size; skip DHT(C4)/JPG(C8)/DAC(CC).
       if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
         // A real SOF segment is length(2) precision(1) height(2) width(2)…, so
-        // its declared length must be >= 8; otherwise it's a coincidental/
-        // truncated marker — skip it rather than return garbage dimensions.
+        // its declared length must be >= 8. Otherwise it's a coincidental or
+        // truncated marker; skip it rather than return garbage dimensions.
         if (b.readUInt16BE(i + 2) >= 8) {
           return { format: "jpeg", height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
         }

@@ -1,8 +1,8 @@
 /**
  * Grammar introspection helper. Parses a representative sample of each grammar
  * and prints its named-node structure (type + extracted name + line), so the
- * AstService definition rules can be grounded in what tree-sitter ACTUALLY emits
- * rather than guessed. Dev tool — run: `npx tsx scripts/discover.ts`.
+ * AstService definition rules can be grounded in what tree-sitter actually emits
+ * rather than guessed. Dev tool. Run: `npx tsx scripts/discover.ts`.
  */
 import { createRequire } from "node:module";
 import path from "node:path";

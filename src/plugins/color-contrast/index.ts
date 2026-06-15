@@ -18,10 +18,9 @@ const NAMED: Readonly<Record<string, string>> = {
 };
 
 /**
- * `color_contrast` — deterministic color math: the WCAG contrast ratio (+ AA/AAA
- * pass/fail) between two colors, or convert one color between hex / rgb / hsl.
- * Saves the model doing the luminance/ratio arithmetic by hand. Pure, no I/O.
- * Read-only. Free tier.
+ * Deterministic color math: the WCAG contrast ratio (with AA/AAA pass/fail)
+ * between two colors, or convert one color between hex, rgb, and hsl. This saves
+ * the model doing the luminance and ratio arithmetic itself. Pure, no I/O.
  */
 export function colorContrastPlugin(): Plugin {
   return {
@@ -34,11 +33,11 @@ export function colorContrastPlugin(): Plugin {
         name: "color_contrast",
         title: "Color contrast / convert",
         description:
-          "Color math without doing it by hand: give two colors to get their WCAG contrast ratio and AA/AAA pass-fail (normal & large text); give one color to convert it between hex, rgb, and hsl. Accepts #hex (3/4/6/8), rgb()/rgba(), hsl()/hsla(), and common color names. Read-only.",
+          "Color math without doing it by hand: give two colors to get their WCAG contrast ratio and AA/AAA pass-fail (normal and large text); give one color to convert it between hex, rgb, and hsl. Accepts #hex (3/4/6/8), rgb()/rgba(), hsl()/hsla(), and common color names. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           color: z.string().min(1).describe("A color: #hex, rgb()/rgba(), hsl()/hsla(), or a common name."),
-          against: z.string().optional().describe("A second color — if given, returns the contrast ratio + AA/AAA verdicts instead of conversions."),
+          against: z.string().optional().describe("A second color; if given, returns the contrast ratio and AA/AAA verdicts instead of conversions."),
         },
         handler: async (args) => {
           try {

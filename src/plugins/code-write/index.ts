@@ -6,9 +6,9 @@ import { splitLines } from "../../core/text.js";
 import { formatSyntaxIssues } from "../../services/ast.js";
 
 /**
- * `code_write` — create or overwrite a whole file, matching Claude's `Write`
- * semantics. Free tier. Creates parent dirs and writes atomically via the
- * sandbox (confined to the workspace root, symlink/ADS-safe).
+ * Create or overwrite a whole file, matching Claude's `Write` semantics.
+ * Creates parent dirs and writes atomically via the sandbox, confined to the
+ * workspace root and safe against symlinks and ADS.
  */
 export function codeWritePlugin(): Plugin {
   let ctx: CoreContext;
@@ -24,7 +24,7 @@ export function codeWritePlugin(): Plugin {
         name: "code_write",
         title: "Write file",
         description:
-          "Create a new file, or OVERWRITE an existing one entirely (same file_path/content as Claude's Write). Use this for new files or full rewrites; to change part of a file prefer code_edit. Creates parent dirs, writes atomically, confined to the workspace; refuses content with an unclosed token (validate=false to override).",
+          "Create a new file, or overwrite an existing one entirely (same file_path/content as Claude's Write). Use this for new files or full rewrites; to change part of a file prefer code_edit. Creates parent dirs, writes atomically, confined to the workspace, and refuses content with an unclosed token (validate=false to override).",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -49,10 +49,10 @@ export function codeWritePlugin(): Plugin {
             // Recovery guard: don't persist syntactically-broken code.
             if (args.validate !== false) {
               let oldContent = "";
-              // New file -> baseline is empty (clean). Existing file -> read it;
-              // if it's UNREADABLE (e.g. over the size cap) the baseline is
-              // unknown, so skip the guard rather than fabricate a clean baseline
-              // (which would falsely flag a rewrite of an already-broken file).
+              // New file -> baseline is empty (clean). Existing file -> read it.
+              // If it's unreadable (e.g. over the size cap) the baseline is
+              // unknown, so skip the guard rather than fabricate a clean baseline,
+              // which would falsely flag a rewrite of an already-broken file.
               let baselineKnown = !existed;
               if (existed) {
                 try {

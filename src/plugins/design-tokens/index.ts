@@ -20,10 +20,10 @@ interface Token {
 }
 
 /**
- * `design_tokens` — distill a project's design tokens (colors, spacing,
- * typography) from CSS custom properties and design-token JSON, instead of
- * re-reading large stylesheets/config every turn. Verbatim name=value pairs,
- * classified by value form. Deterministic — never judges quality. Read-only.
+ * Distills a project's design tokens (colors, spacing, typography) from CSS
+ * custom properties and design-token JSON, instead of re-reading large
+ * stylesheets and configs every turn. Returns verbatim name=value pairs,
+ * classified by value form. Deterministic: it does not judge quality.
  */
 export function designTokensPlugin(): Plugin {
   let ctx: CoreContext;
@@ -40,7 +40,7 @@ export function designTokensPlugin(): Plugin {
         name: "design_tokens",
         title: "Design tokens",
         description:
-          "Extract design tokens (colors, sizes/spacing, typography) as verbatim name=value pairs from CSS custom properties (--var) and design-token JSON, grouped by kind — instead of re-reading whole stylesheets/configs. Pass paths, or omit to auto-discover .css and token/theme .json files. Filter with category (color|size|font|all). Read-only.",
+          "Extract design tokens (colors, sizes/spacing, typography) as verbatim name=value pairs from CSS custom properties (--var) and design-token JSON, grouped by kind, instead of re-reading whole stylesheets and configs. Pass paths, or omit to auto-discover .css and token/theme .json files. Filter with category (color|size|font|all). Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           paths: z.array(z.string()).optional().describe("Files to read (.css / token .json). Omit to auto-discover."),

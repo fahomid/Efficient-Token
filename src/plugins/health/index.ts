@@ -1,7 +1,7 @@
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 
-/** Built-in liveness/config probe. Free tier. */
+/** Built-in liveness and config probe. */
 export function healthPlugin(): Plugin {
   let ctx: CoreContext;
   return {

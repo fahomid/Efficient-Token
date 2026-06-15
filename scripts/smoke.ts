@@ -1,6 +1,6 @@
 /**
  * Self-test for efficient-token. Exercises every core service and the three
- * free-tier plugins against a throwaway workspace, WITHOUT starting the MCP
+ * free-tier plugins against a throwaway workspace, without starting the MCP
  * transport. Prints `ALL PASS` and exits 0 on success; exits 1 otherwise.
  *
  * Run: `npm run smoke`  (tsx scripts/smoke.ts)
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
     const back = await ctx.fs.read("out/written.txt");
     check("fs.writeAtomic round-trips", back.content === "hello atomic");
 
-    // writeAtomic must not follow a symlink that escapes the workspace root.
+    // writeAtomic should not follow a symlink that escapes the workspace root.
     const outsideDir = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-outside-"));
     try {
       let linkCreated = false;
@@ -253,12 +253,12 @@ async function main(): Promise<void> {
       );
     }
 
-    // kind correctness: "constructor" contains "struct" — must not mislabel.
+    // kind correctness: "constructor" contains "struct", so it should not mislabel.
     const javaKinds = (await ctx.ast.outline("K.java", "class K { K() {} void m() {} }")) ?? [];
     const ctor = javaKinds.find((s) => s.name === "K" && s.kind !== "class");
     check("constructor kind not mislabeled as struct", ctor?.kind === "constructor", `got ${ctor?.kind}`);
 
-    // Tier B: grammar loads & parses (config/markup/macro — limited/no symbols).
+    // Tier B: grammar loads and parses (config/markup/macro, limited or no symbols).
     const tierB: Array<{ ext: string; code: string }> = [
       { ext: "css", code: ".a { color: red; }\n" },
       { ext: "html", code: "<!DOCTYPE html><div id='x'>hi</div>\n" },
@@ -273,12 +273,12 @@ async function main(): Promise<void> {
       check(`lang ${ext} parses (Tier B)`, Array.isArray(out), `got ${out === undefined ? "undefined" : "array"}`);
     }
 
-    // Grammars excluded for incompatibility/crashes must NOT be mapped.
+    // Grammars excluded for incompatibility/crashes are not mapped.
     for (const ext of ["elm", "ql", "yaml", "yml"]) {
       check(`lang ${ext} not mapped`, ctx.ast.grammarIdFor(`x.${ext}`) === undefined);
     }
 
-    // Alias extensions must resolve to their base grammar.
+    // Alias extensions resolve to their base grammar.
     const aliases: Record<string, string> = {
       "x.h": "c", "x.hpp": "cpp", "x.cc": "cpp", "x.cxx": "cpp", "x.hh": "cpp", "x.hxx": "cpp",
       "x.mts": "typescript", "x.cts": "typescript", "x.mjs": "javascript", "x.cjs": "javascript", "x.jsx": "javascript",
@@ -316,7 +316,7 @@ async function main(): Promise<void> {
     const rangeRes = await cr.handler({ file_path: "sample.ts", offset: 1, limit: 2 });
     check("code_read range mode (offset/limit, cat-n)", !rangeRes.isError && textOf(rangeRes).includes("lines 1-2") && /(^|\n)\s*1\t/.test(textOf(rangeRes)));
 
-    // GOLDEN sameness: a code_read slice is the EXACT source bytes (not summarized).
+    // Golden sameness: a code_read slice is the exact source bytes, not summarized.
     await ctx.fs.writeAtomic("gold/g.txt", "L1\nL2\nL3\nL4\nL5\n");
     const goldOut = textOf(await cr.handler({ file_path: "gold/g.txt", offset: 2, limit: 2 }));
     const goldSlice = goldOut.split("\n").filter((l) => l.includes("\t")).map((l) => l.slice(l.indexOf("\t") + 1));
@@ -329,7 +329,7 @@ async function main(): Promise<void> {
     const dTxt = textOf(degradeRes);
     check("code_read degrades over budget", !degradeRes.isError && dTxt.includes("exceeds budget 1") && dTxt.includes("Outline:") && dTxt.includes("First lines:"));
 
-    // A wide EXPLICIT range over a large file must bound output, not dump it
+    // A wide explicit range over a large file should bound output, not dump it
     // (adversarial-review fix: readRange now honours maxTokens).
     await ctx.fs.writeAtomic("bigrange.ts", Array.from({ length: 800 }, (_, i) => `const v${i} = ${i}; // ${"y".repeat(40)}`).join("\n") + "\n");
     const wideRange = await cr.handler({ file_path: "bigrange.ts", offset: 1, limit: 800, maxTokens: 50 });
@@ -337,14 +337,14 @@ async function main(): Promise<void> {
     check("code_read bounds a wide range", !wideRange.isError && wrTxt.includes("more line(s)") && wrTxt.length < 3500, `len=${wrTxt.length}`);
 
     // --- round-3 edge-case hardening ------------------------------------
-    // Degrade must stay bounded even when the file is one giant line.
+    // Degrade should stay bounded even when the file is one giant line.
     const longLine = `const data = "${"x".repeat(60000)}";`;
     await ctx.fs.writeAtomic("minified.js", longLine);
     const minRes = await cr.handler({ file_path:"minified.js" });
     const minTxt = textOf(minRes);
     check("code_read bounds degrade of one long line", !minRes.isError && minTxt.length < 5000 && minTxt.includes("long lines truncated"), `len=${minTxt.length}`);
 
-    // Trailing newline must not produce a phantom numbered line / off-by-one.
+    // A trailing newline should not produce a phantom numbered line or off-by-one.
     await ctx.fs.writeAtomic("nl.txt", "l1\nl2\nl3\n");
     const nlTxt = textOf(await cr.handler({ file_path:"nl.txt" }));
     check("code_read no phantom trailing line", nlTxt.includes("3 line(s)") && !/\n\s*4\t/.test(nlTxt), nlTxt);
@@ -363,7 +363,7 @@ async function main(): Promise<void> {
     const trunc = truncate("a".repeat(150) + "😀".repeat(20), 160);
     check("truncate is surrogate-safe", trunc.endsWith("…") && wellFormed(trunc));
 
-    // Mixed declarators: a sibling binding must not leak into a symbol's signature.
+    // Mixed declarators: a sibling binding should not leak into a symbol's signature.
     const md = (await ctx.ast.outline("md.ts", "const a = () => 1, x = 5;\n")) ?? [];
     const aSym = md.find((s) => s.name === "a");
     check("mixed declarator scopes signature", aSym !== undefined && !aSym.signature.includes("x = 5"), `sig=${aSym?.signature}`);
@@ -411,7 +411,7 @@ async function main(): Promise<void> {
     const notFound = await ce.handler({ file_path:"e/edit.txt", old_string:"zzz", new_string:"y" });
     check("code_edit reports missing oldString", notFound.isError === true && textOf(notFound).includes("not found"));
 
-    // newString with `$` patterns must be inserted LITERALLY (no String.replace).
+    // newString with `$` patterns is inserted literally (no String.replace).
     await ctx.fs.writeAtomic("e/dollar.txt", "value = HERE;\n");
     await ce.handler({ file_path:"e/dollar.txt", old_string:"HERE", new_string:"$&$1$$x" });
     check("code_edit inserts $ patterns literally", (await ctx.fs.read("e/dollar.txt")).content === "value = $&$1$$x;\n", (await ctx.fs.read("e/dollar.txt")).content);
@@ -459,7 +459,7 @@ async function main(): Promise<void> {
     const cwOk = await cw.handler({ file_path:"syn/ok.ts", content: "export const y = 2;\n" });
     check("code_write allows valid content", !cwOk.isError && (await ctx.fs.read("syn/ok.ts")).content.includes("y = 2"));
 
-    // Valid-but-newer TS must NOT be falsely blocked (grammar emits ERROR, not MISSING).
+    // Valid-but-newer TS should not be falsely blocked (grammar emits ERROR, not MISSING).
     await ctx.fs.writeAtomic("syn/modern.ts", "class C {\n  x = 1;\n}\n");
     const accessorEdit = await ce.handler({ file_path:"syn/modern.ts", old_string:"  x = 1;", new_string:"  accessor x = 1;" });
     check("code_edit allows valid `accessor` field (no false positive)", !accessorEdit.isError && (await ctx.fs.read("syn/modern.ts")).content.includes("accessor x = 1"));
@@ -467,7 +467,7 @@ async function main(): Promise<void> {
     const varianceEdit = await ce.handler({ file_path:"syn/variance.ts", old_string:"Box<T>", new_string:"Box<out T>" });
     check("code_edit allows valid in/out variance (no false positive)", !varianceEdit.isError && (await ctx.fs.read("syn/variance.ts")).content.includes("Box<out T>"));
 
-    // code_write: an UNREADABLE (oversize) existing baseline must not be faked clean.
+    // code_write: an unreadable (oversize) existing baseline should not be faked clean.
     await ctx.fs.writeAtomic("syn/big.ts", "export function big( {\n"); // already broken
     const tinyCtx: CoreContext = { ...ctx, fs: new SafeFs(new PathSandbox(root), 5) }; // 5-byte read cap
     const tinyWrite = codeWritePlugin();
@@ -544,7 +544,7 @@ async function main(): Promise<void> {
     const apEscape = await ap.handler({ edits: [{ file_path: "../escape.ts", old_string: "a", new_string: "b" }] });
     check("apply_patch blocks path escape", apEscape.isError === true);
 
-    // Case-variant paths to the SAME file must coalesce (no lost edit) on a
+    // Case-variant paths to the same file coalesce (no lost edit) on a
     // case-insensitive filesystem.
     if (process.platform === "win32" || process.platform === "darwin") {
       await ctx.fs.writeAtomic("ap/cv.ts", "const A = 1;\nconst C = 2;\n");
@@ -591,7 +591,7 @@ async function main(): Promise<void> {
     check("project_rename rejects invalid newName", (await pr.handler({ oldName: "gadget", newName: "1bad", path: "pr" })).isError === true);
     check("project_rename rejects identical names", (await pr.handler({ oldName: "x", newName: "x", path: "pr" })).isError === true);
     check("project_rename handles no occurrences", textOf(await pr.handler({ oldName: "nonexistentZZZ", newName: "y", path: "pr" })).includes("No occurrences"));
-    // Unicode identifier boundary: renaming "caf" must not corrupt "café".
+    // Unicode identifier boundary: renaming "caf" should not corrupt "café".
     await ctx.fs.writeAtomic("pr/uni.ts", "const caf = 1;\nconst café = 2;\n");
     const uni = await pr.handler({ oldName: "caf", newName: "X", path: "pr" });
     check("project_rename respects Unicode identifier boundaries", !uni.isError && (await ctx.fs.read("pr/uni.ts")).content === "const X = 1;\nconst café = 2;\n");
@@ -639,11 +639,11 @@ async function main(): Promise<void> {
 
     check("code_search skips node_modules implicitly", !textOf(await cs.handler({ pattern: "alpha" })).includes("node_modules"));
 
-    // Zero-width regex in count+multiline must terminate (no infinite loop).
+    // Zero-width regex in count+multiline terminates (no infinite loop).
     const zw = await cs.handler({ pattern: "\\w*", path: "srch", output_mode: "count", multiline: true });
     check("code_search zero-width regex terminates", !zw.isError);
 
-    // Scanner must not follow a symlinked scope out of the workspace root.
+    // Scanner should not follow a symlinked scope out of the workspace root.
     const scanOut = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-scanout-"));
     await fsp.writeFile(path.join(scanOut, "secret.ts"), "export const secret = 1;\n");
     try {
@@ -703,12 +703,12 @@ async function main(): Promise<void> {
     ] });
     const mixedT = textOf(mixed);
     check("read_many handles a bad target gracefully", !mixed.isError && mixedT.includes("return a + b;") && mixedT.includes("(error)"));
-    // adversarial-review fix: an oversized FIRST target is bounded, not dumped whole.
+    // adversarial-review fix: an oversized first target is bounded, not dumped whole.
     await ctx.fs.writeAtomic("rm/big.txt", Array.from({ length: 500 }, (_, i) => `line ${i} ${"x".repeat(50)}`).join("\n") + "\n");
     const rmBudget = await rmm.handler({ maxTokens: 5, reads: [{ path: "rm/big.txt" }] });
     const rmBudgetT = textOf(rmBudget);
     check("read_many bounds an oversized first target", !rmBudget.isError && rmBudgetT.length < 2000 && rmBudgetT.includes("truncated"), `len=${rmBudgetT.length}`);
-    // adversarial-review fix: read_many must not credit savings per-target (a file
+    // adversarial-review fix: read_many does not credit savings per-target (a file
     // hit by several targets would inflate the baseline). It opts out entirely.
     const rmLedger = new SavingsLedger();
     const rmIsoPlugin = readManyPlugin();
@@ -833,7 +833,7 @@ async function main(): Promise<void> {
     check("svg_digest reports structure without dumping markup",
       svgRes.includes("viewBox: 0 0 24 24") && svgRes.includes("path×2") && svgRes.includes("ids (3)") && svgRes.includes("grad1") && !svgRes.includes("M0 0L10 10"));
     check("svg_digest rejects non-svg", (await svg.handler({ path: "sample.ts" })).isError === true);
-    // adversarial-review fix: a hostile all-word-char <svg> tag must not stall (was O(n²))
+    // adversarial-review fix: a hostile all-word-char <svg> tag should not stall (was O(n²))
     await ctx.fs.writeAtomic("svg/huge.svg", `<svg ${"a".repeat(300000)}></svg>`);
     const svgT0 = Date.now();
     const svgHuge = await svg.handler({ path: "svg/huge.svg" });
@@ -1039,7 +1039,7 @@ async function main(): Promise<void> {
     check("move_symbol re-imports into source when still used", aAfter.includes('import { moved } from "./b'));
     check("move_symbol rewrites named importers", cAfter.includes('from "./b.js"') && !cAfter.includes('from "./a.js"'));
     check("move_symbol unknown symbol errors", (await ms.handler({ symbol: "nopeSym", from: "ms/a.ts", to: "ms/b.ts" })).isError === true);
-    // adversarial-review fix: a same-named import of a DIFFERENT (dotted) module must NOT be rewritten
+    // adversarial-review fix: a same-named import of a different (dotted) module is not rewritten
     await ctx.fs.writeAtomic("ms2/config.ts", "export function cfg() { return 1; }\n");
     await ctx.fs.writeAtomic("ms2/config.local.ts", "export function cfg() { return 2; }\n");
     await ctx.fs.writeAtomic("ms2/app.ts", 'import { cfg } from "./config.local.js";\nexport const zz = cfg();\n');
@@ -1346,7 +1346,7 @@ async function main(): Promise<void> {
       check("test_run rejects backticks/pipes", (await tr.handler({ script: "ok", filter: "a | b `c`" })).isError === true);
       check("test_run rejects a leading-dash filter (arg injection)", (await tr.handler({ script: "ok", filter: "--config=./evil.cjs" })).isError === true);
       check("test_run rejects unsafe script name", (await tr.handler({ script: "a; rm -rf /", filter: "x" })).isError === true);
-      // belt-and-suspenders: an injection attempt is rejected BEFORE running (no side effect)
+      // an injection attempt is rejected before running (no side effect)
       await tr.handler({ script: "ok", filter: 'x && node -e "require(\'fs\').writeFileSync(\'PWNED\',\'x\')"' });
       check("test_run injection never executed", !(await cctx.fs.exists("PWNED")));
       check("test_run missing script lists available", (await tr.handler({ script: "nope" })).isError === true);
@@ -1372,7 +1372,7 @@ async function main(): Promise<void> {
     const reg3: string[] = [];
     await loadPlugins({ registerTool: (n: string) => reg3.push(n) } as never, ctx, [colorContrastPlugin()]);
     check("group gate: unset groups loads everything", reg3.includes("color_contrast"));
-    // Regression: an additive bundle value (or a typo) must NEVER drop core.
+    // Regression: an additive bundle value (or a typo) never drops core.
     const reg4: string[] = [];
     await loadPlugins({ registerTool: (n: string) => reg4.push(n) } as never, { ...ctx, config: { ...ctx.config, groups: new Set(["design"]) } }, [healthPlugin(), colorContrastPlugin()]);
     check("group gate: 'design' still loads core (imply-core)", reg4.includes("health") && reg4.includes("color_contrast"));

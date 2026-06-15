@@ -1,8 +1,8 @@
 /**
  * The kernel contract. Every feature is a {@link Plugin} that receives a shared
  * {@link CoreContext} and exposes {@link ToolDef}s. The kernel knows nothing
- * about any specific feature, and plugins depend only on this file + the
- * services reachable through `CoreContext` — never on each other.
+ * about any specific feature. Plugins depend only on this file plus the services
+ * reachable through `CoreContext`, never on each other.
  */
 import type { ZodRawShape } from "zod";
 
@@ -34,7 +34,7 @@ export interface ToolAnnotations {
   title?: string;
   /** Tool only reads; it never mutates its environment. */
   readOnlyHint?: boolean;
-  /** Same args → same effect (no additional effect on repeat). */
+  /** Same args produce the same effect (no additional effect on repeat). */
   idempotentHint?: boolean;
   /** Tool interacts with an open/external world (network, etc.). */
   openWorldHint?: boolean;
@@ -42,13 +42,13 @@ export interface ToolAnnotations {
   destructiveHint?: boolean;
 }
 
-/** A single MCP tool. `description` ships to the model every turn — keep tight. */
+/** A single MCP tool. `description` ships to the model every turn, so keep it tight. */
 export interface ToolDef {
   name: string;
   title?: string;
   /** Tight; says when to prefer this tool over a built-in. Recurring token cost. */
   description: string;
-  /** A Zod RAW SHAPE (e.g. `{ path: z.string() }`), not `z.object(...)`. */
+  /** A Zod raw shape (e.g. `{ path: z.string() }`), not `z.object(...)`. */
   inputSchema: ZodRawShape;
   /** Behavioural hints (readOnly/idempotent/openWorld) forwarded to the host. */
   annotations?: ToolAnnotations;

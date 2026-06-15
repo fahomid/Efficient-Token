@@ -12,10 +12,10 @@ const MAX_SYMBOL_LINES = 80;
 const MAX_LINE = 400;
 
 /**
- * `grep_context` — regex search that returns each match WITH its enclosing
- * symbol's source (deduped, line-numbered, matched lines marked `›`), so the
- * model gets "where it matched and the surrounding code" in one call instead of
- * searching and then opening each file. Read-only. Free tier.
+ * Regex search that returns each match together with its enclosing symbol's
+ * source (deduped, line-numbered, matched lines marked `›`), so the model gets
+ * where it matched and the surrounding code in one call instead of searching
+ * and then opening each file.
  */
 export function grepContextPlugin(): Plugin {
   let ctx: CoreContext;
@@ -31,7 +31,7 @@ export function grepContextPlugin(): Plugin {
         name: "grep_context",
         title: "Search with context",
         description:
-          "Regex search that returns, for each match, the ENCLOSING function/class/method source (deduped, line-numbered, matched lines marked with ›) — not just the line, and not the whole file. Use this instead of code_search + code_read when you want to see matches in their code context. Filter with glob/type; output is token-bounded. Read-only.",
+          "Regex search that returns, for each match, the enclosing function/class/method source (deduped, line-numbered, matched lines marked with ›): not just the line, and not the whole file. Use this instead of code_search + code_read when you want to see matches in their code context. Filter with glob/type; output is token-bounded. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           pattern: z.string().min(1).describe("Regular expression to search for."),

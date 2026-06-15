@@ -11,7 +11,7 @@ import { identifierBoundary } from "../../services/scan.js";
 const JS_EXTS = ["ts", "mts", "cts", "tsx", "js", "mjs", "cjs", "jsx"];
 const MAX_SCAN_FILES = 10_000;
 const ciFs = process.platform === "win32" || process.platform === "darwin";
-// import|export [type] { names } from "spec"  — `[^}]*` spans multi-line braces.
+// import|export [type] { names } from "spec". `[^}]*` spans multi-line braces.
 const NAMED_FROM_RE = /(import|export)(\s+type)?\s*\{([^}]*)\}\s*from\s*['"]([^'"]+)['"]\s*;?/g;
 
 interface PlanFile {
@@ -21,12 +21,12 @@ interface PlanFile {
 }
 
 /**
- * `move_symbol` — relocate a definition from one file to another atomically, and
- * rewrite the NAMED imports/re-exports of it across the workspace to point at the
- * new file (adding an import back into the source file if it still uses the
- * symbol). dryRun-able, syntax-guarded, all-or-nothing. Default/namespace
- * importers and the moved code's own dependencies are FLAGGED, not guessed.
- * Mutating. Free tier (JS/TS).
+ * Relocates a definition from one file to another atomically, and rewrites the
+ * named imports and re-exports of it across the workspace to point at the new
+ * file (adding an import back into the source file if it still uses the symbol).
+ * Supports dryRun, is syntax-guarded, and is all-or-nothing. Default and
+ * namespace importers, and the moved code's own dependencies, are flagged rather
+ * than guessed. Handles JS/TS.
  */
 export function moveSymbolPlugin(): Plugin {
   let ctx: CoreContext;
@@ -42,7 +42,7 @@ export function moveSymbolPlugin(): Plugin {
         name: "move_symbol",
         title: "Move a symbol",
         description:
-          "Move a definition (function/class/type/const) between files in ONE atomic call, rewriting the NAMED imports/re-exports of it across the workspace (and importing it back into the source if still used). dryRun previews; all-or-nothing, syntax-guarded. Default/namespace imports and the moved code's own deps are reported, not guessed. JS/TS.",
+          "Move a definition (function, class, type, or const) between files in one atomic call, rewriting the named imports and re-exports of it across the workspace (and importing it back into the source if still used). dryRun previews; all-or-nothing and syntax-guarded. Default and namespace imports, and the moved code's own deps, are reported rather than guessed. JS/TS.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("Name of the symbol to move."),
@@ -177,7 +177,7 @@ export function moveSymbolPlugin(): Plugin {
   };
 }
 
-/** Rewrite named import/re-export of `symbol` whose spec resolves to fromKey -> toAbs. */
+/** Rewrites the named import/re-export of `symbol` whose spec resolves to fromKey -> toAbs. */
 function rewriteImports(
   content: string,
   symbol: string,
@@ -259,9 +259,9 @@ function stripExt(p: string): string {
 const JS_EXT_RE = /\.(?:m|c)?[jt]sx?$/i;
 
 /**
- * Module IDENTITY key: strip ONLY a real JS/TS extension (not any trailing dot
- * segment), so `./config` and `./config.ts` unify but `./config.local` stays a
- * DISTINCT module — preventing a rewrite of an unrelated same-named import.
+ * Module identity key. Strips only a real JS/TS extension, not any trailing dot
+ * segment, so `./config` and `./config.ts` unify while `./config.local` stays a
+ * distinct module. This prevents rewriting an unrelated same-named import.
  */
 function moduleKey(p: string): string {
   return p.replace(/\\/g, "/").replace(JS_EXT_RE, "");
@@ -278,7 +278,7 @@ async function rollback(ctx: CoreContext, written: PlanFile[]): Promise<string[]
   for (const pf of written) {
     try {
       if (pf.original === null) {
-        // A file THIS operation created — delete it to honor all-or-nothing.
+        // A file this operation created: delete it to honor all-or-nothing.
         await fsp.rm(ctx.paths.resolve(pf.rel), { force: true });
       } else {
         await ctx.fs.writeAtomic(pf.rel, pf.original);

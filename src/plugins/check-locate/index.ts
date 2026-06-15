@@ -11,10 +11,10 @@ const SAFE_SCRIPT = /^[A-Za-z0-9:._-]+$/;
 const DEFAULT_LOCATIONS = 5;
 
 /**
- * `check_locate` — run a package.json script (like `code_check`) and, on FAILURE,
- * parse `file:line` references out of the output and show the failing source
- * (with its enclosing symbol) plus a bounded output tail. Turns "the check
- * failed" into "here's the code that failed" in one call. Executes. Free tier.
+ * Run a package.json script (like `code_check`) and, on failure, parse
+ * `file:line` references out of the output and show the failing source with its
+ * enclosing symbol, plus a bounded output tail. This turns "the check failed"
+ * into "here's the code that failed" in one call.
  */
 export function checkLocatePlugin(): Plugin {
   let ctx: CoreContext;
@@ -30,7 +30,7 @@ export function checkLocatePlugin(): Plugin {
         name: "check_locate",
         title: "Run a check and locate failures",
         description:
-          "Run a package.json script (test/build/lint/typecheck) and, on failure, show the failing SOURCE: it parses file:line out of the output and returns each error site with a few lines of context and its enclosing symbol, plus a bounded output tail. Use this to go from a failing check to the offending code in one call. Only package.json scripts can be run.",
+          "Run a package.json script (test/build/lint/typecheck) and, on failure, show the failing source: it parses file:line out of the output and returns each error site with a few lines of context and its enclosing symbol, plus a bounded output tail. Use this to go from a failing check to the offending code in one call. Only package.json scripts can be run.",
         annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true },
         inputSchema: {
           script: z.string().min(1).describe("Name of the package.json script to run."),

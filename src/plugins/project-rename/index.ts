@@ -16,11 +16,11 @@ interface Change {
 }
 
 /**
- * `project_rename` — rename a symbol across the whole workspace in one atomic,
- * all-or-nothing call (identifier-boundary text replacement), instead of
- * find_references → edit each file. Syntax-guarded per file and `dryRun`-able.
- * NOTE: textual, not scope-aware — it renames every identifier with that name in
- * scope, so scope it with path/glob/type and preview with dryRun. Mutating. Free.
+ * Renames a symbol across the whole workspace in one atomic, all-or-nothing call
+ * using identifier-boundary text replacement, instead of find_references then
+ * editing each file. Syntax-guarded per file, and supports dryRun. Note that the
+ * replacement is textual, not scope-aware: it renames every identifier with that
+ * name, so scope it with path/glob/type and preview with dryRun first.
  */
 export function projectRenamePlugin(): Plugin {
   let ctx: CoreContext;
@@ -36,7 +36,7 @@ export function projectRenamePlugin(): Plugin {
         name: "project_rename",
         title: "Rename across the project",
         description:
-          "Rename an identifier across the workspace in ONE atomic call (identifier-boundary), instead of find_references + editing each file. dryRun previews counts; syntax-guarded. NOTE: textual (not scope-aware) — renames EVERY identifier with that name, so scope with path/glob/type and preview first. Mutating.",
+          "Rename an identifier across the workspace in one atomic call (identifier-boundary), instead of find_references plus editing each file. dryRun previews counts; syntax-guarded. Note: textual, not scope-aware, so it renames every identifier with that name. Scope with path/glob/type and preview first. Mutating.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         inputSchema: {
           oldName: z.string().min(1).describe("Existing identifier to rename."),

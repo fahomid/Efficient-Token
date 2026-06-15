@@ -11,9 +11,9 @@ interface BlameMeta {
 }
 
 /**
- * `line_blame` — who last changed each line, with contiguous same-commit runs
- * COLLAPSED into ranges (so a region authored in one commit is one row, not N).
- * Scope to a symbol or line range to keep it tight. Read-only git. Free tier.
+ * Reports who last changed each line, with contiguous same-commit runs
+ * collapsed into ranges, so a region authored in one commit is one row, not N.
+ * Scope to a symbol or line range to keep it tight.
  */
 export function lineBlamePlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function lineBlamePlugin(): Plugin {
         name: "line_blame",
         title: "Line blame",
         description:
-          "Line provenance via git blame, with contiguous same-commit runs COLLAPSED into ranges (Lstart-Lend  sha  date  author  summary) — far more compact than per-line blame. Scope with symbol (mapped to its span via the AST) or startLine/endLine; omit both for the whole file (token-bounded). Use this to see who/when/why a region last changed. Read-only git.",
+          "Line provenance via git blame, with contiguous same-commit runs collapsed into ranges (Lstart-Lend  sha  date  author  summary), far more compact than per-line blame. Scope with symbol (mapped to its span via the AST) or startLine/endLine; omit both for the whole file (token-bounded). Use this to see who/when/why a region last changed. Read-only git.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().describe("File path relative to the workspace root."),

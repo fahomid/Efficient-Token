@@ -8,10 +8,10 @@ const DEFAULT_HEAD = 200;
 const MAX_HEAD = 10_000;
 
 /**
- * `glob` — list workspace file PATHS matching a glob and/or type (no content),
+ * Lists workspace file paths matching a glob and/or type (no content),
  * mirroring Claude's `Glob`. Use it to find files cheaply (e.g. all tests, all
- * `*.ts`) without reading anything. Skips node_modules/.git/build dirs;
- * deterministic, token-bounded. Read-only. Free tier.
+ * `*.ts`) without reading anything. Skips node_modules/.git/build dirs. Output
+ * is deterministic and token-bounded.
  */
 export function globPlugin(): Plugin {
   let ctx: CoreContext;
@@ -27,7 +27,7 @@ export function globPlugin(): Plugin {
         name: "glob",
         title: "List files",
         description:
-          'List file paths matching a glob (e.g. "**/*.ts", "src/**/*.test.ts") and/or a type — paths only, no content. Use this to find files instead of reading directories. Combine glob + type + path to scope. Skips node_modules/.git/build dirs.',
+          'List file paths matching a glob (e.g. "**/*.ts", "src/**/*.test.ts") and/or a type: paths only, no content. Use this to find files instead of reading directories. Combine glob + type + path to scope. Skips node_modules/.git/build dirs.',
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           pattern: z.string().optional().describe('Glob to match, e.g. "**/*.ts". Omit to list all files in scope.'),
@@ -56,7 +56,7 @@ export function globPlugin(): Plugin {
               return ok(`No files match ${String(what)}.`);
             }
 
-            // Bound by BOTH the path count (head) and the token budget, so a deep
+            // Bound by both the path count (head) and the token budget, so a deep
             // tree of long paths can't blow the context even within headLimit.
             const lines: string[] = [];
             let used = 0;

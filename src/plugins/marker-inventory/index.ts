@@ -10,10 +10,10 @@ const DEFAULT_HEAD = 200;
 const MAX_SCAN_FILES = 10_000;
 
 /**
- * `marker_inventory` — collect code-comment markers (TODO / FIXME / HACK / …)
- * across the workspace as `file:line  text`, grouped by tag, instead of grepping
- * and opening files. Matches markers after a comment leader (so prose words
- * aren't false positives). Returns real lines (faithful). Read-only. Free tier.
+ * Collects code-comment markers (TODO / FIXME / HACK / …) across the workspace
+ * as `file:line  text`, grouped by tag, instead of grepping and opening files.
+ * Matches markers only after a comment leader, so prose words aren't false
+ * positives. Returns the real comment lines.
  */
 export function markerInventoryPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function markerInventoryPlugin(): Plugin {
         name: "marker_inventory",
         title: "Marker inventory",
         description:
-          "Inventory code-comment markers (TODO, FIXME, HACK, XXX, BUG by default; pass tags to customize) across the workspace — grouped by tag, each as file:line + the marker text — instead of grepping and opening files. Only matches markers after a comment leader (//, #, /*, *, <!--, ;, --) so prose isn't a false positive. Scope with path/glob/type. Read-only.",
+          "Inventory code-comment markers (TODO, FIXME, HACK, XXX, BUG by default; pass tags to customize) across the workspace, grouped by tag, each as file:line plus the marker text, instead of grepping and opening files. Only matches markers after a comment leader (//, #, /*, *, <!--, ;, --) so prose isn't a false positive. Scope with path/glob/type. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           tags: z.array(z.string()).optional().describe(`Marker tags to look for (default: ${DEFAULT_TAGS.join(", ")}).`),

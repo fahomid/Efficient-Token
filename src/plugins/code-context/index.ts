@@ -19,10 +19,10 @@ interface Def {
 }
 
 /**
- * `code_context` — a one-shot task primer for a symbol: its definition source,
- * the workspace symbols it USES (with signatures), and where it is REFERENCED.
- * Replaces the read-def-then-chase-each-dependency loop with one bounded call.
- * Read-only. Free tier.
+ * Build a one-shot task primer for a symbol: its definition source, the
+ * workspace symbols it uses (with signatures), and where it is referenced. This
+ * replaces the read-the-definition-then-chase-each-dependency loop with one
+ * bounded call.
  */
 export function codeContextPlugin(): Plugin {
   let ctx: CoreContext;
@@ -38,7 +38,7 @@ export function codeContextPlugin(): Plugin {
         name: "code_context",
         title: "Symbol context pack",
         description:
-          "Build a context pack for a symbol in ONE call: its definition source (line-numbered), the workspace-defined symbols it uses (kind + signature + location), and where it is referenced (file:line). Use this to prime a task on an unfamiliar symbol instead of reading the definition then chasing each dependency. Token-bounded. Read-only.",
+          "Build a context pack for a symbol in one call: its definition source (line-numbered), the workspace-defined symbols it uses (kind, signature, location), and where it is referenced (file:line). Use this to prime a task on an unfamiliar symbol instead of reading the definition then chasing each dependency. Token-bounded. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("Symbol (function/class/…) to build context for."),

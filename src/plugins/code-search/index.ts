@@ -10,10 +10,10 @@ const MAX_SCAN_FILES = 10_000;
 const MAX_LINE = 400;
 
 /**
- * `code_search` — regex content search across the workspace, mirroring Claude's
- * `Grep` (ripgrep) tool: `glob`/`type` filters, `content`/`files_with_matches`/
- * `count` output modes, context lines, case-insensitive and multiline. Returns
- * matching lines/paths — never whole files. Read-only. Free tier.
+ * Regex content search across the workspace, mirroring Claude's `Grep`
+ * (ripgrep) tool: `glob`/`type` filters; `content`/`files_with_matches`/`count`
+ * output modes; context lines; case-insensitive and multiline. Returns matching
+ * lines or paths, never whole files.
  */
 export function codeSearchPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function codeSearchPlugin(): Plugin {
         name: "code_search",
         title: "Search code",
         description:
-          "Regex search across the workspace, mirroring Claude's Grep (ripgrep): same params (output_mode, -i, -A/-B/-C, -n, -o, head_limit, glob, type, multiline). Returns matching file paths (default), matching lines (output_mode=content), or per-file counts (output_mode=count) — NOT whole files. Prefer this over reading many files to find where something is. Skips node_modules/.git/build dirs.",
+          "Regex search across the workspace, mirroring Claude's Grep (ripgrep): same params (output_mode, -i, -A/-B/-C, -n, -o, head_limit, glob, type, multiline). Returns matching file paths (default), matching lines (output_mode=content), or per-file counts (output_mode=count), not whole files. Prefer this over reading many files to find where something is. Skips node_modules/.git/build dirs.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           pattern: z.string().min(1).describe("Regular expression to search for."),
@@ -41,9 +41,9 @@ export function codeSearchPlugin(): Plugin {
             .optional()
             .describe('"files_with_matches" (default) | "content" (matching lines) | "count".'),
           "-i": z.boolean().optional().describe("Case-insensitive match."),
-          "-A": z.number().int().min(0).optional().describe("Lines of context AFTER each match (content mode)."),
-          "-B": z.number().int().min(0).optional().describe("Lines of context BEFORE each match (content mode)."),
-          "-C": z.number().int().min(0).optional().describe("Lines of context before AND after each match (content mode)."),
+          "-A": z.number().int().min(0).optional().describe("Lines of context after each match (content mode)."),
+          "-B": z.number().int().min(0).optional().describe("Lines of context before each match (content mode)."),
+          "-C": z.number().int().min(0).optional().describe("Lines of context before and after each match (content mode)."),
           "-n": z.boolean().optional().describe("Show line numbers in content output (default true)."),
           "-o": z.boolean().optional().describe("Output only the matched parts, one per line (content mode)."),
           multiline: z.boolean().optional().describe("Let the pattern span lines (dot matches newline)."),

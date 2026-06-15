@@ -8,10 +8,10 @@ const MAX_SCAN_FILES = 10_000;
 const DEFAULT_PER_FILE = 40;
 
 /**
- * `repo_map` — a deterministic table of contents for the workspace: the file
- * tree plus each file's TOP-LEVEL symbols (name + kind, from the AST). One call
- * replaces dozens of exploratory reads for orientation. Output is bounded by a
- * token budget. Read-only. Free tier.
+ * A deterministic table of contents for the workspace: the file tree plus each
+ * file's top-level symbols (name and kind, from the AST). One call replaces
+ * dozens of exploratory reads for orientation. Output is bounded by a token
+ * budget.
  */
 export function repoMapPlugin(): Plugin {
   let ctx: CoreContext;
@@ -27,7 +27,7 @@ export function repoMapPlugin(): Plugin {
         name: "repo_map",
         title: "Repository map",
         description:
-          "A compact map of the project: the file tree grouped by directory, with each source file's TOP-LEVEL symbols (classes/functions/types) and their kinds — NOT the source. Use this once to orient in an unfamiliar codebase instead of reading many files; then drill in with code_outline / code_read. Skips node_modules/.git/build dirs; output is token-bounded.",
+          "A compact map of the project: the file tree grouped by directory, with each source file's top-level symbols (classes, functions, types) and their kinds, not the source. Use this once to orient in an unfamiliar codebase instead of reading many files, then drill in with code_outline or code_read. Skips node_modules/.git/build dirs; output is token-bounded.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().optional().describe("Directory to map (relative). Default: whole workspace."),
@@ -83,8 +83,8 @@ export function repoMapPlugin(): Plugin {
                 entry = `  ${base}`;
               }
 
-              // Budget the directory header + entry TOGETHER, so we never leave a
-              // dangling header and never count symbols for an un-emitted file.
+              // Budget the directory header and entry together, so we don't leave a
+              // dangling header or count symbols for an un-emitted file.
               const dirHeader = dir === "." ? "." : `${dir}/`;
               const needDir = dir !== lastDir;
               const addition = (needDir ? dirHeader.length + 1 : 0) + entry.length + 1;

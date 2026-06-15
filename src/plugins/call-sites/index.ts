@@ -10,10 +10,10 @@ const DEFAULT_HEAD = 100;
 const MAX_SCAN_FILES = 10_000;
 
 /**
- * `call_sites` — where a symbol is actually CALLED (AST-precise: the callee of a
- * call/invocation), not text matches like find_references/code_search would give
- * (which include imports, type annotations, comments, value-passing). Each hit
- * is `file:line  enclosing.symbol  ›<call line>`. Read-only. Free tier.
+ * Find where a symbol is actually called. This is AST-precise (the callee of a
+ * call or invocation), not the text matches find_references and code_search
+ * return, which also count imports, type annotations, comments, and
+ * value-passing. Each hit is `file:line  enclosing.symbol  ›<call line>`.
  */
 export function callSitesPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function callSitesPlugin(): Plugin {
         name: "call_sites",
         title: "Find call sites",
         description:
-          "Find where a function/method is actually CALLED (AST callee), not text matches. Distinct from find_references (counts imports/types/comments) and code_search (raw regex). Each hit: file:line + enclosing symbol + the call line. TS/JS, Python, Go, Rust, Java, C/C++, Ruby. Scope with path/glob/type. Read-only.",
+          "Find where a function or method is actually called (the AST callee), not text matches. Distinct from find_references, which counts imports, types, and comments, and from code_search, which is raw regex. Each hit: file:line, enclosing symbol, and the call line. TS/JS, Python, Go, Rust, Java, C/C++, Ruby. Scope with path/glob/type. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("The function/method name being called."),

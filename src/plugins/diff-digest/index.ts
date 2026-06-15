@@ -5,9 +5,9 @@ import { gitOk, isSafeRef, runGit } from "../../core/git.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 
 /**
- * `diff_digest` — summarize git changes as just the changed hunks (or a `--stat`
- * / file list), instead of the model reading whole changed files. Runs only
- * read-only git (`diff`/`rev-parse`) via `execFile` (no shell). Free tier.
+ * Summarizes git changes as just the changed hunks (or a `--stat` summary or
+ * file list), instead of the model reading whole changed files. Runs read-only
+ * git (`diff`/`rev-parse`) via `execFile`, with no shell.
  */
 export function diffDigestPlugin(): Plugin {
   let ctx: CoreContext;
@@ -23,7 +23,7 @@ export function diffDigestPlugin(): Plugin {
         name: "diff_digest",
         title: "Diff digest",
         description:
-          'Summarize git changes as the changed hunks only (or a --stat summary / file list) — NOT whole files. Defaults to uncommitted changes vs HEAD. Pass ref (a branch/commit/range like "main" or "main...HEAD"), staged=true for the index, or path to scope. outputMode: digest (default) | stat | files. Use this to review changes without reading files. Read-only git.',
+          'Summarize git changes as the changed hunks only (or a --stat summary / file list), not whole files. Defaults to uncommitted changes vs HEAD. Pass ref (a branch/commit/range like "main" or "main...HEAD"), staged=true for the index, or path to scope. outputMode: digest (default) | stat | files. Use this to review changes without reading files. Read-only git.',
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           ref: z.string().optional().describe('Compare against this branch/commit/range (e.g. "main", "HEAD~3", "main...HEAD"). Default: working tree vs HEAD.'),

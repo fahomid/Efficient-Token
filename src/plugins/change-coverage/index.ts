@@ -10,11 +10,11 @@ import { errMessage, fail, ok } from "../../core/result.js";
 const DEFAULT_ARTIFACTS = ["coverage/lcov.info", "lcov.info", "coverage/lcov"];
 
 /**
- * `change_coverage` — answer "did I test my change?" by intersecting the diff's
- * changed lines with an lcov coverage artifact, reporting covered vs uncovered
- * changed lines (with their enclosing symbol) — instead of reading a huge
- * coverage report and computing the intersection by hand. Pure set arithmetic
- * over real data; never judges whether coverage is "enough". Read-only.
+ * Answer "did I test my change?" by intersecting the diff's changed lines with
+ * an lcov coverage artifact, reporting covered vs uncovered changed lines and
+ * their enclosing symbol. This saves reading a huge coverage report and
+ * computing the intersection by hand. It is pure set arithmetic over real data
+ * and never judges whether coverage is "enough".
  */
 export function changeCoveragePlugin(): Plugin {
   let ctx: CoreContext;
@@ -30,7 +30,7 @@ export function changeCoveragePlugin(): Plugin {
         name: "change_coverage",
         title: "Change coverage",
         description:
-          "Show which CHANGED lines are covered vs uncovered by tests, intersecting the git diff with an lcov artifact (coverage/lcov.info) — instead of reading a huge coverage report by hand. Uncovered changed lines as file:line + enclosing symbol. ref/path/artifact to scope. Read-only. NOTE: line numbers align only if the artifact matches the current tree.",
+          "Show which changed lines are covered vs uncovered by tests, intersecting the git diff with an lcov artifact (coverage/lcov.info) instead of reading a huge coverage report by hand. Uncovered changed lines are reported as file:line plus enclosing symbol. Use ref/path/artifact to scope. Read-only. Note that line numbers align only if the artifact matches the current tree.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           ref: z.string().optional().describe('Compare against this branch/commit/range (default: working tree vs HEAD).'),
@@ -173,7 +173,7 @@ function parseLcov(text: string, root: string): Map<string, Map<number, number>>
   return map;
 }
 
-/** Exact key, else a UNIQUE coverage entry whose path ends with `/<rel>` (else undefined). */
+/** Exact key, else a unique coverage entry whose path ends with `/<rel>` (else undefined). */
 function lookupCoverage(cov: Map<string, Map<number, number>>, rel: string): Map<number, number> | undefined {
   const key = rel.toLowerCase();
   const exact = cov.get(key);
@@ -182,7 +182,7 @@ function lookupCoverage(cov: Map<string, Map<number, number>>, rel: string): Map
   let hit: Map<number, number> | undefined;
   for (const [k, v] of cov) {
     if (k.endsWith(suffix)) {
-      if (hit) return undefined; // ambiguous — don't guess (stay deterministic)
+      if (hit) return undefined; // ambiguous: don't guess, stay deterministic
       hit = v;
     }
   }

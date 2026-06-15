@@ -6,12 +6,11 @@ import { numberLines, splitLines } from "../../core/text.js";
 import { formatSyntaxIssues, type SymbolInfo } from "../../services/ast.js";
 
 /**
- * `replace_symbol` — replace a named symbol's ENTIRE definition by name, so the
- * model never has to send the old body back as a match anchor (as code_edit
- * requires). The model authors only the new source; the tool resolves WHERE via
- * the AST (the same span code_read uses), splices on exact char offsets
- * (line-ending/BOM faithful), runs the syntax-recovery guard, and writes
- * atomically. Mutating. Free tier.
+ * Replaces a named symbol's entire definition by name, so the model never has to
+ * send the old body back as a match anchor the way code_edit requires. The model
+ * authors only the new source; the tool resolves where via the AST (the same
+ * span code_read uses), splices on exact char offsets (line-ending and BOM
+ * faithful), runs the syntax-recovery guard, and writes atomically.
  */
 export function replaceSymbolPlugin(): Plugin {
   let ctx: CoreContext;
@@ -27,7 +26,7 @@ export function replaceSymbolPlugin(): Plugin {
         name: "replace_symbol",
         title: "Replace a symbol",
         description:
-          "Replace a whole function/class/method definition by NAME — pass newSource (the full new definition) instead of pasting the old body as a match anchor like code_edit needs. Refuses ambiguous names (pass container/occurrence). Same syntax guard as code_edit (validate=false to override); atomic. Use code_edit for partial edits.",
+          "Replace a whole function, class, or method definition by name: pass newSource (the full new definition) instead of pasting the old body as a match anchor like code_edit needs. Refuses ambiguous names (pass container/occurrence). Same syntax guard as code_edit (validate=false to override); atomic. Use code_edit for partial edits.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,

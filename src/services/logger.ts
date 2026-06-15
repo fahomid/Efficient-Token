@@ -1,6 +1,6 @@
 /**
- * stderr-only logger. stdout is the MCP JSON-RPC stream — a stray write there
- * corrupts the transport and the host disconnects, so logging NEVER uses it.
+ * stderr-only logger. stdout is the MCP JSON-RPC stream; a stray write there
+ * corrupts the transport and the host disconnects, so logging stays off it.
  */
 export interface Logger {
   info(msg: string, ...args: unknown[]): void;

@@ -7,9 +7,9 @@ import { numberLines, splitLines } from "../../core/text.js";
 import { formatSyntaxIssues } from "../../services/ast.js";
 
 /**
- * `code_edit` — exact string replacement in a file, matching Claude's `Edit`
- * semantics: `oldString` must occur VERBATIM and be UNIQUE (unless `replaceAll`),
- * else the edit is refused. Free tier. Writes atomically via the sandbox.
+ * Exact string replacement in a file, matching Claude's `Edit` semantics:
+ * `oldString` must occur verbatim and be unique (unless `replaceAll`), else the
+ * edit is refused. Writes atomically via the sandbox.
  */
 export function codeEditPlugin(): Plugin {
   let ctx: CoreContext;
@@ -25,7 +25,7 @@ export function codeEditPlugin(): Plugin {
         name: "code_edit",
         title: "Edit code",
         description:
-          "Exact find-and-replace in a file, matching Claude's Edit (same file_path/old_string/new_string/replace_all). old_string must match VERBATIM (incl. whitespace) and be UNIQUE unless replace_all=true. Refuses missing/ambiguous matches; atomic write; refuses an edit that would introduce an unclosed token (validate=false to override). For a full create/overwrite use code_write.",
+          "Exact find-and-replace in a file, matching Claude's Edit (same file_path/old_string/new_string/replace_all). old_string must match verbatim, including whitespace, and be unique unless replace_all=true. Refuses missing or ambiguous matches, writes atomically, and refuses an edit that would introduce an unclosed token (validate=false to override). For a full create or overwrite use code_write.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -37,14 +37,14 @@ export function codeEditPlugin(): Plugin {
           old_string: z
             .string()
             .min(1)
-            .describe("Exact text to replace — must match the file verbatim."),
+            .describe("Exact text to replace; must match the file verbatim."),
           new_string: z
             .string()
             .describe("Replacement text (may be empty to delete the matched text)."),
           replace_all: z
             .boolean()
             .optional()
-            .describe("Replace EVERY occurrence instead of requiring a unique match."),
+            .describe("Replace every occurrence instead of requiring a unique match."),
           validate: z
             .boolean()
             .optional()
@@ -88,7 +88,7 @@ export function codeEditPlugin(): Plugin {
   };
 }
 
-/** Line-numbered window around the FIRST change so the model can verify it. */
+/** Line-numbered window around the first change so the model can verify it. */
 function changedPreview(
   oldContent: string,
   newContent: string,

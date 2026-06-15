@@ -3,7 +3,7 @@ import path from "node:path";
 /**
  * Confines all path resolution to the workspace root. Any path that would escape
  * the root (via `..`, or an absolute path outside it) throws. This is a purely
- * lexical guard; {@link SafeFs} adds a `realpath` check to also defeat symlinks
+ * lexical guard. {@link SafeFs} adds a `realpath` check to also defeat symlinks
  * that point outside the root.
  */
 export class PathSandbox {

@@ -15,12 +15,11 @@ interface WorkFile {
 }
 
 /**
- * `apply_patch` — apply MANY exact-string edits (across one or several files) in
- * a single, all-or-nothing call. Each edit follows `code_edit` semantics
- * (verbatim + unique-or-replaceAll). Everything is computed and validated in
- * memory first; if ANY edit fails or would introduce a syntax error, nothing is
- * written. Saves the per-call round-trips of editing files one at a time.
- * Mutating. Free tier.
+ * Apply many exact-string edits, across one or several files, in a single
+ * all-or-nothing call. Each edit follows `code_edit` semantics: verbatim match,
+ * unique unless replaceAll. Everything is computed and validated in memory
+ * first, so if any edit fails or would introduce a syntax error, nothing is
+ * written. This avoids the per-call round-trips of editing files one at a time.
  */
 export function applyPatchPlugin(): Plugin {
   let ctx: CoreContext;
@@ -36,7 +35,7 @@ export function applyPatchPlugin(): Plugin {
         name: "apply_patch",
         title: "Apply a patch",
         description:
-          "Apply a batch of exact find-and-replace edits across one or more files in ONE atomic call (all-or-nothing). Each edit: { path, oldString (verbatim, unique unless replaceAll), newString, replaceAll? }. Multiple edits to the same file apply in order. If any edit fails to match or would introduce a syntax error, NOTHING is written. Use this instead of many code_edit calls for multi-file changes.",
+          "Apply a batch of exact find-and-replace edits across one or more files in one atomic, all-or-nothing call. Each edit: { path, oldString (verbatim, unique unless replaceAll), newString, replaceAll? }. Multiple edits to the same file apply in order. If any edit fails to match or would introduce a syntax error, nothing is written. Use this instead of many code_edit calls for multi-file changes.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -69,7 +68,7 @@ export function applyPatchPlugin(): Plugin {
               replace_all?: boolean;
             }>;
 
-            // 1) Apply every edit IN MEMORY (read each file once), aborting on the
+            // 1) Apply every edit in memory (read each file once), aborting on the
             //    first failure so nothing is partially written.
             const work = new Map<string, WorkFile>();
             const order: string[] = [];
@@ -77,7 +76,7 @@ export function applyPatchPlugin(): Plugin {
               const e = edits[i]!;
               const abs = ctx.paths.resolve(String(e.file_path));
               // Key by the file's real on-disk identity so case-variant paths
-              // (Windows/macOS) or symlink aliases map to ONE working copy.
+              // (Windows/macOS) or symlink aliases map to one working copy.
               let key: string;
               try {
                 key = await fsp.realpath(abs);
@@ -147,7 +146,7 @@ export function applyPatchPlugin(): Plugin {
   };
 }
 
-/** Restore originals for already-written files; return rels that could NOT be restored. */
+/** Restore originals for already-written files; return rels that could not be restored. */
 async function rollback(
   ctx: CoreContext,
   writtenKeys: string[],

@@ -9,10 +9,10 @@ const DEFAULT_HEAD = 50;
 const MAX_SCAN_FILES = 10_000;
 
 /**
- * `symbol_find` — locate where symbols are DEFINED across the workspace by name
- * (exact, or `substring` for fuzzy recall), returning `file:line  kind name
- * signature`. Distinct from find_references (exact-name usages) and code_search
- * (raw text): this is "find the definition of the thing called ~X~". Read-only.
+ * Locates where symbols are defined across the workspace by name (exact, or
+ * `substring` for fuzzy recall), returning `file:line  kind name signature`.
+ * Unlike find_references (exact-name usages) and code_search (raw text), this
+ * finds the definition of the thing called X.
  */
 export function symbolFindPlugin(): Plugin {
   let ctx: CoreContext;
@@ -28,7 +28,7 @@ export function symbolFindPlugin(): Plugin {
         name: "symbol_find",
         title: "Find a symbol definition",
         description:
-          "Find where symbols are DEFINED by name — exact, or substring=true for fuzzy recall. Returns file:line + kind + signature per definition, optional kind filter. Jump to a definition you half-remember instead of grepping. Read-only.",
+          "Find where symbols are defined by name: exact, or substring=true for fuzzy recall. Returns file:line, kind, and signature per definition, with an optional kind filter. Jump to a definition you half-remember instead of grepping. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           name: z.string().min(1).describe("Symbol name (or substring with substring=true)."),

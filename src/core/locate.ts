@@ -4,8 +4,9 @@ import { splitLines, truncate } from "./text.js";
 
 const MAX_LINE = 400;
 const MAX_LINE_LEN = 2000; // skip pathologically long lines (ReDoS / minified frames)
-// Path (optional drive prefix) — a colon-free run — then :line(:col)?. The body
-// excludes ':' so there is no quantifier overlap: this is LINEAR (no ReDoS).
+// Path (optional drive prefix, a colon-free run) then :line(:col)?. The body
+// excludes ':' so there is no quantifier overlap, keeping the match linear (no
+// ReDoS).
 const LOCATION_RE = /((?:[A-Za-z]:)?[^\s:'"()]+):(\d+)(?::\d+)?/g;
 
 export interface LocateOptions {
@@ -15,15 +16,15 @@ export interface LocateOptions {
   context?: number;
   /** Cap on lines scanned for locations. */
   maxScanLines?: number;
-  /** Scan the END of the text (build logs — errors last) vs the START (stack traces). */
+  /** Scan the end of the text (build logs, where errors come last) instead of the start (stack traces). */
   fromEnd?: boolean;
 }
 
 /**
  * Parse `file:line[:col]` references out of arbitrary text (a build log, a stack
- * trace) and render each as the failing SOURCE: a few context lines (the target
- * marked `›`) plus its enclosing symbol. Sandbox-confined, dedup'd, bounded, and
- * ReDoS-safe. Shared by `check_locate` and `trace_locate`.
+ * trace) and render each as the failing source: a few context lines (the target
+ * marked `›`) plus its enclosing symbol. Sandbox-confined, deduplicated,
+ * bounded, and ReDoS-safe. Shared by `check_locate` and `trace_locate`.
  */
 export async function locateInText(ctx: CoreContext, text: string, opts: LocateOptions = {}): Promise<string[]> {
   const max = opts.max ?? 5;

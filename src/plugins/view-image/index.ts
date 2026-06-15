@@ -19,11 +19,11 @@ const MIME_BY_EXT: Readonly<Record<string, string>> = {
 };
 
 /**
- * `view_image` — return one or more image FILES to you as viewable images,
- * instead of describing them or waiting for a human to paste a screenshot. Use
- * it to SEE a rendered frame, an exported asset, a screenshot, or a generated
- * preview after you produce it (e.g. run your project's render/screenshot script
- * with code_check, then view the output). Read-only. Free tier.
+ * Returns one or more image files to you as viewable images, instead of
+ * describing them or waiting for a human to paste a screenshot. Use it to view a
+ * rendered frame, an exported asset, a screenshot, or a generated preview after
+ * you produce it (e.g. run your project's render/screenshot script with
+ * code_check, then view the output).
  */
 export function viewImagePlugin(): Plugin {
   let ctx: CoreContext;
@@ -39,7 +39,7 @@ export function viewImagePlugin(): Plugin {
         name: "view_image",
         title: "View image",
         description:
-          "See raster image file(s) directly (png/jpg/gif/webp/avif/bmp) — pass one or more paths and they are returned to you as viewable images. Use this to inspect a rendered frame / screenshot / exported asset after generating it, instead of guessing or asking for a paste. Render at a modest size; oversized files are refused (raise maxBytes). For SVG/vector use code_read or svg_digest. Read-only.",
+          "See raster image file(s) directly (png/jpg/gif/webp/avif/bmp): pass one or more paths and they are returned to you as viewable images. Use this to inspect a rendered frame, screenshot, or exported asset after generating it, instead of guessing or asking for a paste. Render at a modest size; oversized files are refused (raise maxBytes). For SVG/vector use code_read or svg_digest. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           paths: z.array(z.string()).min(1).max(MAX_PATHS).describe("Image file path(s) relative to the workspace root (e.g. a rendered frame)."),

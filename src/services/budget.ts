@@ -1,7 +1,8 @@
 /**
  * Cheap, dependency-free token estimator. Uses the common ~4-chars-per-token
- * heuristic — intentionally an estimate, not a tokenizer (no per-model coupling,
- * no extra dependency). Used only to decide when a whole-file read degrades.
+ * heuristic. This is deliberately an estimate, not a tokenizer, which avoids
+ * per-model coupling and an extra dependency. Used only to decide when a
+ * whole-file read degrades.
  */
 export class TokenBudgeter {
   /** Estimated token count for `text`. */

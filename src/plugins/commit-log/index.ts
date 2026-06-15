@@ -8,9 +8,9 @@ const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 1000;
 
 /**
- * `commit_log` — compact commit metadata (`sha date author subject`, no bodies
- * or diffs), optionally scoped to a path or ref, instead of raw `git log`. Use
- * it to orient in history cheaply. Read-only git. Free tier.
+ * Returns compact commit metadata (`sha date author subject`, no bodies or
+ * diffs), optionally scoped to a path or ref, instead of raw `git log`. Use it
+ * to orient in history cheaply.
  */
 export function commitLogPlugin(): Plugin {
   let ctx: CoreContext;
@@ -26,7 +26,7 @@ export function commitLogPlugin(): Plugin {
         name: "commit_log",
         title: "Commit log",
         description:
-          "Compact commit history: one row per commit — short-sha date author subject — with no bodies or diffs. Scope with path (commits touching it), ref (branch/range), or limit. Use this to orient in history without raw git log noise. For the changes themselves use diff_digest; for one symbol's history use symbol_history. Read-only git.",
+          "Compact commit history: one row per commit (short-sha date author subject) with no bodies or diffs. Scope with path (commits touching it), ref (branch/range), or limit. Use this to orient in history without raw git log noise. For the changes themselves use diff_digest; for one symbol's history use symbol_history. Read-only git.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().optional().describe("Only commits touching this path (relative)."),

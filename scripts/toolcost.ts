@@ -1,9 +1,9 @@
 /**
  * Deterministic fixed-cost reporter: the per-turn token tax of the tool
  * definitions (name + description + every inputSchema `.describe()` + param
- * names + annotations) that ship to the model EVERY turn, whether or not a tool
- * fires. No model involved — this number is exact and reproducible, the only
- * honest "tokens saved" metric. Run: `npm run toolcost`.
+ * names + annotations) that ship to the model on every turn, whether or not a
+ * tool fires. No model is involved, so this number is exact and reproducible,
+ * the one honest "tokens saved" metric. Run: `npm run toolcost`.
  *
  * Reports per-group totals so you can see what `EFFICIENT_TOKEN_GROUPS=core`
  * (or any bundle subset) actually saves.

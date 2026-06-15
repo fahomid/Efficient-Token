@@ -9,10 +9,10 @@ const ID_RE = /\bid\s*=\s*["']([^"']+)["']/g;
 const MAX_IDS = 80;
 
 /**
- * `svg_digest` — the STRUCTURE of an SVG (viewBox, intrinsic size, element
- * histogram, defined ids) instead of dumping the full markup with its long
- * path/`d` data. A structural digest like code_outline — use code_read for the
- * actual markup of a region. Read-only. Free tier.
+ * Reports the structure of an SVG (viewBox, intrinsic size, element histogram,
+ * defined ids) instead of dumping the full markup with its long path `d` data. A
+ * structural digest like code_outline; use code_read for the actual markup of a
+ * region.
  */
 export function svgDigestPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function svgDigestPlugin(): Plugin {
         name: "svg_digest",
         title: "SVG digest",
         description:
-          "Summarize an SVG's structure — viewBox, intrinsic width/height, an element-type histogram, and defined ids — without dumping the verbose markup and path data. Use this to understand/locate parts of an SVG cheaply; use code_read for the actual markup of a region. Read-only.",
+          "Summarize an SVG's structure (viewBox, intrinsic width/height, an element-type histogram, and defined ids) without dumping the verbose markup and path data. Use this to understand or locate parts of an SVG cheaply; use code_read for the actual markup of a region. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().describe("Path to an .svg file (relative to the workspace root)."),
@@ -44,7 +44,7 @@ export function svgDigestPlugin(): Plugin {
 
             // Cap the opening tag before attribute parsing: attrsOf's regex is
             // O(n²) on a pathological all-word-char tag, and a real <svg …> tag
-            // is tiny — so bound it to a constant to stay time-bounded.
+            // is tiny, so bound it to a constant to stay time-bounded.
             const rawRoot = /<svg\b[^>]*>/i.exec(content)?.[0] ?? "";
             const root = rawRoot.length > 8192 ? rawRoot.slice(0, 8192) : rawRoot;
             const rootAttrs = attrsOf(root);

@@ -66,8 +66,8 @@ import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 const VERSION = "0.1.0";
 
 /**
- * The only place features are wired together. Premium/grouped plugins can be
- * listed here unconditionally — the loader skips them until the entitlement and
+ * The only place features are wired together. Premium and grouped plugins can be
+ * listed here unconditionally: the loader skips them until the entitlement and
  * the enabled bundle (group) allow it. Exported so dev tooling (e.g. the
  * tool-cost reporter) can introspect the registry without starting the server.
  */
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
   log.info(`workspace root: ${config.root}`);
   log.info(`tier: ${ctx.license.tier}; tools: ${result.registeredTools.join(", ")}`);
   if (result.skipped.length > 0) {
-    // Each entry carries its own reason suffix — "(tier)" or "(group:…)".
+    // Each entry carries its own reason suffix: "(tier)" or "(group:…)".
     log.info(`skipped: ${result.skipped.join(", ")}`);
   }
 

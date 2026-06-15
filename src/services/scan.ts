@@ -31,7 +31,7 @@ const IGNORED_DIRS: ReadonlySet<string> = new Set([
   "coverage", ".next", ".nuxt", ".turbo", ".cache", ".idea", ".vscode",
 ]);
 
-/** Common `type` aliases (à la ripgrep/Claude Grep) -> file extensions. */
+/** Common `type` aliases (like ripgrep/Claude Grep) to file extensions. */
 export const TYPE_EXTS: Readonly<Record<string, readonly string[]>> = {
   ts: ["ts", "mts", "cts", "tsx"],
   tsx: ["tsx"],
@@ -145,9 +145,9 @@ function include(
     const ext = dot === -1 ? "" : rel.slice(dot + 1).toLowerCase();
     if (!exts.has(ext)) return false;
   }
-  // A slash-glob matches the workspace-relative path OR — when the scan is
-  // scoped to a sub-path — the path relative to that scope, so a scoped glob
-  // like { path: "src", pattern: "lib/*.ts" } is not silently anchored to root.
+  // A slash-glob matches the workspace-relative path, or, when the scan is
+  // scoped to a sub-path, the path relative to that scope. This keeps a scoped
+  // glob like { path: "src", pattern: "lib/*.ts" } from being anchored to root.
   if (match && !match(rel) && (relWithin === rel || !match(relWithin))) return false;
   return true;
 }
@@ -165,9 +165,9 @@ async function statSafe(p: string): Promise<import("node:fs").Stats | undefined>
 }
 
 /**
- * Compile a glob into a matcher. A glob without `/` matches the file's BASENAME
- * (so `*.ts` matches at any depth, like ripgrep); a glob with `/` matches the
- * full workspace-relative path. Supports `**`, `*`, `?`, `{a,b}`, and `[...]`.
+ * Compile a glob into a matcher. A glob without `/` matches the file's basename,
+ * so `*.ts` matches at any depth, like ripgrep. A glob with `/` matches the full
+ * workspace-relative path. Supports `**`, `*`, `?`, `{a,b}`, and `[...]`.
  */
 export function compileGlob(glob: string): (rel: string) => boolean {
   const basenameOnly = !glob.includes("/");
@@ -239,11 +239,11 @@ export function escapeRegExp(s: string): string {
 }
 
 /**
- * A regex matching `name` only at identifier boundaries — Unicode-aware, so it
- * never matches an ASCII substring inside a larger identifier (e.g. `caf` inside
+ * A regex matching `name` only at identifier boundaries. It is Unicode-aware, so
+ * it won't match an ASCII substring inside a larger identifier (e.g. `caf` inside
  * `café`). `\p{ID_Continue}` covers letters/digits/underscore/combining marks
- * across languages; `$` is added explicitly (valid in JS identifiers). Caller
- * passes extra flags (e.g. "g", "gi"); the `u` flag is always added.
+ * across languages; `$` is added explicitly, since it is valid in JS identifiers.
+ * The caller passes extra flags (e.g. "g", "gi"); the `u` flag is always added.
  */
 export function identifierBoundary(name: string, flags = ""): RegExp {
   return new RegExp(`(?<![\\p{ID_Continue}$])${escapeRegExp(name)}(?![\\p{ID_Continue}$])`, `${flags}u`);

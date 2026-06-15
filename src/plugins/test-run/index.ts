@@ -10,15 +10,15 @@ const MAX_TIMEOUT_MS = 300_000;
 const SAFE_SCRIPT = /^[A-Za-z0-9:._-]+$/;
 // Shell-safe filter: letters/digits/space and a few path/name punctuation. No
 // quotes, $, backtick, %, !, or shell metacharacters can escape the quoting in
-// run-script — so a filter can never run an arbitrary command.
+// run-script, so a filter can never run an arbitrary command.
 const SAFE_FILTER = /^[A-Za-z0-9 _.,:/@'=+-]+$/;
 
 /**
- * `test_run` — run ONE test (or a subset) by passing a filter through to a
- * package.json test script, returning PASS or a bounded failure tail + the
- * failing source — instead of running the whole suite and reading the full log.
- * Only package.json scripts run; the filter is charset-restricted (no arbitrary
- * commands). Executes. Free tier.
+ * Runs one test (or a subset) by passing a filter through to a package.json
+ * test script. Returns a pass result or a bounded failure tail plus the failing
+ * source, rather than running the whole suite and reading the full log. Only
+ * package.json scripts run, and the filter is charset-restricted so it can't
+ * inject arbitrary commands.
  */
 export function testRunPlugin(): Plugin {
   let ctx: CoreContext;
@@ -34,7 +34,7 @@ export function testRunPlugin(): Plugin {
         name: "test_run",
         title: "Run a test",
         description:
-          "Run a focused test by forwarding a filter to a package.json test script (`npm run test -- <filter>`) — returns PASS or a bounded failure tail + failing source (file:line + enclosing symbol). Cheaper than the whole suite. Only package.json scripts; filter must be plain (no shell metacharacters, no leading '-'). Script must accept `-- <filter>` (vitest/jest/mocha). Executes.",
+          "Run a focused test by forwarding a filter to a package.json test script (`npm run test -- <filter>`). Returns a pass result or a bounded failure tail plus the failing source (file:line and enclosing symbol). Cheaper than running the whole suite. Only package.json scripts run, and the filter must be plain text (no shell metacharacters, no leading '-'). The script must accept `-- <filter>` (vitest/jest/mocha). Executes.",
         annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true },
         inputSchema: {
           script: z.string().min(1).describe('The package.json test script to run (e.g. "test").'),
@@ -48,7 +48,7 @@ export function testRunPlugin(): Plugin {
             if (!SAFE_SCRIPT.test(script)) return fail(`invalid script name: ${JSON.stringify(script)}.`);
             const filter = args.filter === undefined ? undefined : String(args.filter);
             if (filter !== undefined && (filter.trim() === "" || filter.trim().startsWith("-") || !SAFE_FILTER.test(filter))) {
-              // A leading "-" would be parsed as an OPTION by the test runner
+              // A leading "-" would be parsed as an option by the test runner
               // (e.g. --config/--require -> arbitrary code at load), so reject it.
               return fail(`invalid filter: ${JSON.stringify(filter)}. Use a plain test name/path (must not start with "-", no shell metacharacters).`);
             }

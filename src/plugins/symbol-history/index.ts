@@ -5,11 +5,10 @@ import { gitOk, isSafeRef, runGit } from "../../core/git.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 
 /**
- * `symbol_history` — the history of ONE symbol (or line range), via
- * `git log -L`, instead of chaining `git log` + per-commit `git show` and
- * dragging in unrelated file context. `list` mode = the commits that touched
- * the span; `hunks` mode = the verbatim per-revision diff of just that span.
- * Read-only git. Free tier.
+ * Traces the history of one symbol (or line range) via `git log -L`, instead of
+ * chaining `git log` with per-commit `git show` and dragging in unrelated file
+ * context. `list` mode gives the commits that touched the span; `hunks` mode
+ * gives the verbatim per-revision diff of just that span. Read-only git.
  */
 export function symbolHistoryPlugin(): Plugin {
   let ctx: CoreContext;
@@ -25,7 +24,7 @@ export function symbolHistoryPlugin(): Plugin {
         name: "symbol_history",
         title: "Symbol history",
         description:
-          "History of a single symbol (or line range) via git log -L — not the whole file's log. Pass path + symbol (mapped to its span via the AST) or path + startLine/endLine. mode: list (default — commits: sha date author subject) | hunks (per-revision diff of that span). Optional ref limits how far back. Read-only git.",
+          "History of a single symbol (or line range) via git log -L, not the whole file's log. Pass path + symbol (mapped to its span via the AST) or path + startLine/endLine. mode: list (default, commits as sha date author subject) | hunks (per-revision diff of that span). Optional ref limits how far back. Read-only git.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().describe("File path relative to the workspace root."),

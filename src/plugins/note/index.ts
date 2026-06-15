@@ -9,10 +9,10 @@ const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const notePath = (name: string): string => `${NOTES_DIR}/${name}.md`;
 
 /**
- * `note` — a tiny persistent scratchpad (`note_write` / `note_read`) under
+ * A small persistent scratchpad (`note_write` / `note_read`) under
  * `.efficient-token/notes/`, so multi-step or multi-agent work can stash and
- * recall plans/findings without re-deriving them or re-reading the codebase.
- * Confined to a fixed safe path. Free tier.
+ * recall plans and findings without re-deriving them or re-reading the codebase.
+ * Confined to a fixed safe path.
  */
 export function notePlugin(): Plugin {
   let ctx: CoreContext;
@@ -28,7 +28,7 @@ export function notePlugin(): Plugin {
         name: "note_write",
         title: "Write a note",
         description:
-          "Save (or append to) a named note under .efficient-token/notes/ — a scratchpad for plans, findings, or TODOs that persists across steps/agents. Use it to avoid re-deriving context. name is a slug ([A-Za-z0-9._-]); set append=true to add to an existing note.",
+          "Save (or append to) a named note under .efficient-token/notes/, a scratchpad for plans, findings, or TODOs that persists across steps and agents. Use it to avoid re-deriving context. name is a slug ([A-Za-z0-9._-]); set append=true to add to an existing note.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         inputSchema: {
           name: z.string().min(1).describe("Note name (slug, e.g. \"plan\")."),
@@ -62,7 +62,7 @@ export function notePlugin(): Plugin {
         name: "note_read",
         title: "Read a note",
         description:
-          "Read a named note saved by note_write, or — with no name — list all saved notes (under .efficient-token/notes/). Use it to recall plans/findings from earlier steps.",
+          "Read a named note saved by note_write, or with no name list all saved notes (under .efficient-token/notes/). Use it to recall plans and findings from earlier steps.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           name: z.string().optional().describe("Note name to read. Omit to list all notes."),

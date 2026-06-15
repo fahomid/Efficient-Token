@@ -3,13 +3,13 @@
  * lives for the whole session, so this accumulates across tool calls and is
  * reported by `health`.
  *
- * It only records where the baseline is EXACT and honest: a tool that read a
- * full file (or git blob) but returned less. `baselineChars` = what the built-in
- * Read would have returned (the whole file); `returnedChars` = what we actually
- * returned. Saved = baseline − returned, clamped at 0 (a whole-file read that
- * fits saves ~nothing — correctly ~0, never negative). Token counts use the same
- * ~4-chars/token estimate as {@link TokenBudgeter}; this is a faithful estimate,
- * not a per-model tokenizer.
+ * It only records cases where the baseline is exact and honest: a tool that read
+ * a full file (or git blob) but returned less. `baselineChars` is what the
+ * built-in Read would have returned (the whole file); `returnedChars` is what we
+ * actually returned. Saved is baseline minus returned, clamped at 0, so a
+ * whole-file read that fits saves about nothing (correctly near 0, never
+ * negative). Token counts use the same ~4-chars/token estimate as
+ * {@link TokenBudgeter}; this is an estimate, not a per-model tokenizer.
  */
 export interface SavingsReport {
   calls: number;

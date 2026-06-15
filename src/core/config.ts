@@ -9,8 +9,8 @@ export interface Config {
   /** Hard cap (bytes) on any file {@link SafeFs} will read. */
   readonly maxFileBytes: number;
   /**
-   * Tool bundles to register. `undefined` = all (no filtering). When set, only
-   * plugins whose `group` is in this set load — so a project can shed the
+   * Tool bundles to register. `undefined` means all (no filtering). When set,
+   * only plugins whose `group` is in this set load. This lets a project shed the
    * per-turn description cost of bundles it never uses (e.g. set to "core" in a
    * pure-code repo to drop the "design" media tools).
    */
@@ -39,8 +39,9 @@ export function loadConfig(): Config {
   const parsedGroups = rawGroups
     ? new Set(rawGroups.split(",").map((g) => g.trim().toLowerCase()).filter(Boolean))
     : undefined;
-  // A delimiter-only value (e.g. ",") parses to an empty set — treat that as
-  // unset (load all), never as "enable nothing", so it can't silently drop tools.
+  // A delimiter-only value (e.g. ",") parses to an empty set. Treat that as
+  // unset (load all) rather than "enable nothing", so it can't silently drop
+  // tools.
   const groups = parsedGroups && parsedGroups.size > 0 ? parsedGroups : undefined;
   return {
     root,

@@ -1,7 +1,7 @@
 /**
- * Pure, literal exact-string replacement — the shared primitive behind
- * `code_edit` and `apply_patch`. No `String.replace` (which would interpret
- * `$&`/`$1` in the replacement); matching/uniqueness mirror Claude's `Edit`.
+ * Pure, literal exact-string replacement: the shared primitive behind
+ * `code_edit` and `apply_patch`. Avoids `String.replace`, which would interpret
+ * `$&`/`$1` in the replacement. Matching and uniqueness mirror Claude's `Edit`.
  */
 
 export type EditResult =

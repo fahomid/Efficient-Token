@@ -14,10 +14,10 @@ interface Loc {
 }
 
 /**
- * `token_usage` — which CSS custom properties are DEFINED but never referenced
- * via var(), and which are USED via var() but never defined — across the
- * scanned stylesheets, instead of cross-checking by eye. Scoped to CSS custom
- * properties to stay false-positive-free. Read-only. Free tier.
+ * Reports which CSS custom properties are defined but never referenced via
+ * var(), and which are referenced via var() but never defined, across the
+ * scanned stylesheets, rather than cross-checking by eye. Scoped to CSS custom
+ * properties to avoid false positives.
  */
 export function tokenUsagePlugin(): Plugin {
   let ctx: CoreContext;
@@ -34,7 +34,7 @@ export function tokenUsagePlugin(): Plugin {
         name: "token_usage",
         title: "Token usage",
         description:
-          "Audit CSS custom properties across stylesheets: list ones DEFINED but never referenced via var(), and ones USED via var() but never defined — with a file:line for each — instead of cross-checking by hand. Pass paths or omit to scan .css/.scss/.less. Note: cross-file/JS/inline definitions outside the scanned files can't be seen, so treat results as scoped. Read-only.",
+          "Audit CSS custom properties across stylesheets: list ones defined but never referenced via var(), and ones referenced via var() but never defined, with a file:line for each, instead of cross-checking by hand. Pass paths or omit to scan .css/.scss/.less. Definitions outside the scanned files (cross-file, JS, inline) can't be seen, so treat results as scoped. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           paths: z.array(z.string()).optional().describe("Stylesheets to scan. Omit to auto-discover .css/.scss/.less."),

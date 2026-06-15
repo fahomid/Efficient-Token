@@ -17,8 +17,8 @@ export function numberLines(lines: string[], startNo = 1): string {
 }
 
 /**
- * Split source into display lines: handles all three line terminators
- * (`\r\n`, `\r`, `\n`) and strips ONE trailing terminator so a conventional
+ * Split source into display lines. Handles all three line terminators (`\r\n`,
+ * `\r`, `\n`) and strips one trailing terminator so a conventional
  * newline-terminated file does not yield a phantom empty last line. An empty
  * string yields `[]`.
  */
@@ -29,8 +29,8 @@ export function splitLines(content: string): string[] {
 
 /**
  * Truncate to at most `maxCodepoints` code points, appending `…` if cut. Slices
- * on code-point (not UTF-16 code-unit) boundaries so an astral character / emoji
- * is never split into a lone, ill-formed surrogate.
+ * on code-point boundaries rather than UTF-16 code-unit boundaries, so an astral
+ * character or emoji is never split into a lone, ill-formed surrogate.
  */
 export function truncate(s: string, maxCodepoints: number): string {
   const cps = Array.from(s);

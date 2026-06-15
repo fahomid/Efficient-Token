@@ -14,7 +14,7 @@ export interface SymbolInfo {
   signature: string;
   startLine: number;
   endLine: number;
-  /** Char offset of the definition's first char in the source (for exact splices). */
+  /** Char offset of the definition's first char in the source, for exact splices. */
   startIndex: number;
   /** Char offset just past the definition's last char. */
   endIndex: number;
@@ -43,9 +43,9 @@ const WASM_DIR = path.join(
 
 /**
  * File extension (no dot, lowercase) -> tree-sitter grammar id. Every id maps to
- * a `tree-sitter-<id>.wasm` in tree-sitter-wasms. (elm/codeql/yaml grammars in
- * that package are NOT mapped: they are ABI-incompatible with / crash this
- * web-tree-sitter runtime — see scripts/discover.ts.)
+ * a `tree-sitter-<id>.wasm` in tree-sitter-wasms. The elm, codeql, and yaml
+ * grammars in that package are not mapped: they are ABI-incompatible with, or
+ * crash, this web-tree-sitter runtime (see scripts/discover.ts).
  */
 const EXT_TO_GRAMMAR: Readonly<Record<string, string>> = {
   // TypeScript / JavaScript
@@ -74,8 +74,8 @@ const EXT_TO_GRAMMAR: Readonly<Record<string, string>> = {
   hpp: "cpp",
   hh: "cpp",
   hxx: "cpp",
-  cs: "c_sharp", // NOTE the underscore: file is tree-sitter-c_sharp.wasm
-  m: "objc", // Objective-C (note: .m is also MATLAB — no grammar for that)
+  cs: "c_sharp", // underscore is intentional: file is tree-sitter-c_sharp.wasm
+  m: "objc", // Objective-C (.m is also MATLAB, which has no grammar here)
   // JVM
   java: "java",
   kt: "kotlin",
@@ -116,7 +116,7 @@ const EXT_TO_GRAMMAR: Readonly<Record<string, string>> = {
 /**
  * Node types that are definitions across the supported grammars. Curated from
  * the actual trees each grammar emits (scripts/discover.ts), so it stays a flat,
- * language-agnostic allowlist — a type here is a definition wherever it appears.
+ * language-agnostic allowlist: a type here is a definition wherever it appears.
  */
 const DEFINITION_TYPES: ReadonlySet<string> = new Set([
   // functions / methods / constructors
@@ -182,8 +182,8 @@ const DEFINITION_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Value node types that make a `const X = …` binding itself a definition (the
- * binding's name + the value's kind). Covers JS/TS arrow consts and Zig's
+ * Value node types that make a `const X = …` binding itself a definition, taking
+ * the binding's name and the value's kind. Covers JS/TS arrow consts and Zig's
  * `const Foo = struct {…}` / `enum {…}` idiom.
  */
 const VALUE_DEFINITION_TYPES: ReadonlySet<string> = new Set([
@@ -228,8 +228,8 @@ const IDENT_TYPES: ReadonlySet<string> = new Set([
 /**
  * Per-grammar call/invocation node types and the field naming the callee, for
  * `findCallLines`. Curated for the common languages; a grammar absent here
- * parses but reports no call sites (callers degrade honestly). The callee falls
- * back to the first named child when the field is absent.
+ * parses but reports no call sites, so callers degrade honestly. The callee
+ * falls back to the first named child when the field is absent.
  */
 const CALL_SPECS: Readonly<Record<string, ReadonlyArray<{ type: string; field?: string }>>> = {
   typescript: [{ type: "call_expression", field: "function" }, { type: "new_expression", field: "constructor" }],
@@ -245,12 +245,12 @@ const CALL_SPECS: Readonly<Record<string, ReadonlyArray<{ type: string; field?: 
 };
 
 /**
- * Tree-sitter (via WASM) outline + symbol slicing. Grammars load lazily and are
- * cached; extracted outlines are memoized in a small LRU so a file parsed once
- * is not parsed again (e.g. a symbol miss, a budget degrade, or `code_outline`
- * followed by `code_read` on the same content all reuse the first parse). All
- * node access happens synchronously inside {@link AstService.run} before the
- * tree's WASM memory is freed.
+ * Tree-sitter (via WASM) outline and symbol slicing. Grammars load lazily and
+ * are cached; extracted outlines are memoized in a small LRU so a file parsed
+ * once is not parsed again. A symbol miss, a budget degrade, and `code_outline`
+ * followed by `code_read` on the same content all reuse the first parse. All node
+ * access happens synchronously inside {@link AstService.run} before the tree's
+ * WASM memory is freed.
  */
 export class AstService {
   private initialized = false;
@@ -330,9 +330,9 @@ export class AstService {
   }
 
   /**
-   * 1-based line numbers where `calleeName` is the CALLEE of a call/invocation
-   * (AST-precise — not text matches; excludes imports, types, comments).
-   * @returns `undefined` if the file type has no grammar OR no call mapping
+   * 1-based line numbers where `calleeName` is the callee of a call/invocation.
+   * AST-precise, not text matches: it excludes imports, types, and comments.
+   * @returns `undefined` if the file type has no grammar or no call mapping
    * (so callers can degrade honestly); `[]` if mapped but no calls match.
    */
   async findCallLines(filePath: string, code: string, calleeName: string): Promise<number[] | undefined> {
@@ -351,7 +351,7 @@ export class AstService {
   /**
    * Every call/invocation in the file as `{name, line}` (the callee name and the
    * 1-based line). Used by `call_hierarchy` to list a function's callees.
-   * @returns `undefined` if the file type has no grammar OR no call mapping.
+   * @returns `undefined` if the file type has no grammar or no call mapping.
    */
   async findCalls(filePath: string, code: string): Promise<Array<{ name: string; line: number }> | undefined> {
     const id = this.grammarIdFor(filePath);
@@ -414,7 +414,7 @@ export class AstService {
       if (c && IDENT_TYPES.has(c.type)) return c.text;
     }
     // Computed/subscript callees (obj[key](), arr[i]()) have no static name; the
-    // last named child is the index expression, not the callee — don't guess.
+    // last named child is the index expression, not the callee, so don't guess.
     if (node.type === "subscript_expression" || node.type === "subscript") return undefined;
     let last: Node | undefined;
     for (let i = 0; i < node.namedChildCount; i++) {
@@ -437,10 +437,10 @@ export class AstService {
   }
 
   /**
-   * Syntax errors that an edit would INTRODUCE: errors present in `newContent`
+   * Syntax errors that an edit would introduce: errors present in `newContent`
    * but not in `oldContent`. Returns `[]` when the file type has no grammar, the
-   * new content is clean, or the old content was ALREADY broken (so a fix isn't
-   * blocked). This is the deterministic guard behind code_edit / code_write.
+   * new content is clean, or the old content was already broken (so a fix isn't
+   * blocked). This is the deterministic guard behind code_edit and code_write.
    */
   async introducedSyntaxErrors(
     filePath: string,
@@ -449,8 +449,8 @@ export class AstService {
   ): Promise<SyntaxIssue[]> {
     const after = await this.findSyntaxErrors(filePath, newContent);
     if (after === undefined) return []; // no grammar
-    // Block ONLY on introduced MISSING nodes (an absent/unclosed token, e.g. an
-    // unbalanced bracket). Generic ERROR nodes are deliberately NOT blocked:
+    // Block only on introduced MISSING nodes (an absent or unclosed token, e.g.
+    // an unbalanced bracket). Generic ERROR nodes are deliberately not blocked:
     // tree-sitter emits them for valid-but-newer syntax the bundled grammar does
     // not know yet (e.g. TS `accessor` fields, `in`/`out` variance), which would
     // be false positives that wrongly refuse correct edits.
@@ -462,7 +462,7 @@ export class AstService {
     return afterMissing;
   }
 
-  /** Collect ERROR/MISSING nodes (capped + depth-bounded), into error subtrees. */
+  /** Collect ERROR/MISSING nodes (capped and depth-bounded) within error subtrees. */
   private collectErrors(node: Node, src: string, out: SyntaxIssue[], depth = 0): void {
     if (depth > 200) return; // defensive bound against pathological nesting
     for (let i = 0; i < node.childCount && out.length < 20; i++) {
@@ -503,7 +503,7 @@ export class AstService {
 
   /**
    * Parse, run `fn` synchronously against the root node, then free WASM memory.
-   * `fn` MUST extract everything it needs (it cannot retain nodes past return).
+   * `fn` must extract everything it needs; it cannot retain nodes past return.
    */
   private async run<T>(
     filePath: string,
@@ -566,7 +566,7 @@ export class AstService {
     if (DEFINITION_TYPES.has(type)) {
       const name = this.nameOf(node, src);
       return name === undefined
-        ? [] // anonymous definition — skip
+        ? [] // anonymous definition: skip
         : [this.symbolAt(node, kindFromType(type), name, src)];
     }
     if (type === "lexical_declaration" || type === "variable_declaration") {
@@ -596,7 +596,7 @@ export class AstService {
         );
       }
     }
-    // SOLE declarator in the statement: report the whole declaration (nicer
+    // Sole declarator in the statement: report the whole declaration (nicer
     // signature). With multiple declarators, scope each symbol to its own
     // declarator so a sibling binding can't leak into its signature/range.
     if (declaratorCount === 1 && perDeclarator.length === 1) {
@@ -605,7 +605,7 @@ export class AstService {
     }
     if (perDeclarator.length > 0) return perDeclarator;
 
-    // Zig: `const Foo = struct {…}` — the value is a direct child, no declarator.
+    // Zig: `const Foo = struct {…}`, where the value is a direct child, no declarator.
     for (let i = 0; i < node.namedChildCount; i++) {
       const c = node.namedChild(i);
       if (!c || !VALUE_DEFINITION_TYPES.has(c.type)) continue;
@@ -633,11 +633,11 @@ export class AstService {
   }
 
   /**
-   * The char span of a definition INCLUDING its leading `export`/decorator/
+   * The char span of a definition including its leading `export`, decorator, and
    * `declare` wrappers, so an exact splice replaces the whole declaration as it
-   * appears in source. A SOLE `const`/`var` binding expands to its declaration
-   * statement; one of SEVERAL bindings stays the single declarator (so replacing
-   * one never clobbers its siblings).
+   * appears in source. A sole `const`/`var` binding expands to its declaration
+   * statement; one of several bindings stays the single declarator, so replacing
+   * one never clobbers its siblings.
    */
   private outerSpan(node: Node): { startIndex: number; endIndex: number } {
     let top: Node = node;
@@ -658,7 +658,7 @@ export class AstService {
   /**
    * Resolve a definition's name: a `const/var` binding's declarator name, the
    * `name` field, a C-style `declarator` chain (function_definition ->
-   * function_declarator -> identifier), else the first identifier-like child.
+   * function_declarator -> identifier), or else the first identifier-like child.
    */
   private nameOf(node: Node, src: string): string | undefined {
     if (
@@ -709,9 +709,9 @@ export class AstService {
   }
 
   /**
-   * Best-effort doc detection: a preceding comment (after climbing export /
+   * Best-effort doc detection: a preceding comment (after climbing export and
    * decorator wrappers), or a Python-style docstring as the first body statement.
-   * Any surprise -> false.
+   * Any surprise returns false.
    */
   private hasDoc(node: Node): boolean {
     try {
@@ -745,7 +745,7 @@ function kindFromType(type: string): string {
   const override = KIND_OVERRIDES[type];
   if (override) return override;
   const t = type.toLowerCase();
-  // "constructor" CONTAINS the substring "struct" — must be tested first.
+  // "constructor" contains the substring "struct", so test it first.
   if (t.includes("constructor")) return "constructor";
   if (t.includes("class")) return "class";
   if (t.includes("interface")) return "interface";

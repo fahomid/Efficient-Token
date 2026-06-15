@@ -4,7 +4,7 @@ import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import type { SymbolInfo } from "../../services/ast.js";
 
-/** `code_outline` — list a file's symbols (not its source). Free tier. */
+/** List a file's symbols (not its source). */
 export function codeOutlinePlugin(): Plugin {
   let ctx: CoreContext;
   return {
@@ -19,7 +19,7 @@ export function codeOutlinePlugin(): Plugin {
         name: "code_outline",
         title: "Code outline",
         description:
-          "List the symbols (functions, classes, methods, types) defined in a source file with line ranges and signatures — NOT the full source. Prefer this over reading a whole file when you only need its shape, then fetch one symbol with code_read.",
+          "List the symbols (functions, classes, methods, types) defined in a source file with line ranges and signatures, not the full source. Prefer this over reading a whole file when you only need its shape, then fetch one symbol with code_read.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z

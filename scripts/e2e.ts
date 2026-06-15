@@ -1,5 +1,5 @@
 /**
- * End-to-end integration test: spawn the BUILT server (`dist/index.js`) and
+ * End-to-end integration test: spawn the built server (`dist/index.js`) and
  * drive it over a real MCP stdio transport. Proves the protocol round-trips and
  * that stdout carries only JSON-RPC (a stray log would corrupt parsing here).
  *
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
     const mapTxt = resultText(map);
     check("repo_map over the wire", !map.isError && mapTxt.includes("repo map —") && mapTxt.includes("sample.ts"));
 
-    // The e2e workspace is a temp dir (not a git repo) — diff_digest must
+    // The e2e workspace is a temp dir (not a git repo), so diff_digest should
     // respond gracefully over the wire rather than crash.
     const dd = await client.callTool({ name: "diff_digest", arguments: {} });
     check("diff_digest responds gracefully (non-repo) over the wire", dd.isError === true && resultText(dd).includes("not a git repository"));

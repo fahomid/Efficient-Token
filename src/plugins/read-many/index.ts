@@ -6,10 +6,10 @@ import { errMessage, fail, ok } from "../../core/result.js";
 import { truncate } from "../../core/text.js";
 
 /**
- * `read_many` — read several symbols / line ranges / files in ONE call (the
- * read-side analog of apply_patch). Each target follows code_read semantics;
- * results are concatenated and bounded by an overall token budget. Saves the
- * per-call round-trips of reading files one at a time. Read-only. Free tier.
+ * Reads several symbols, line ranges, or files in one call (the read-side analog
+ * of apply_patch). Each target follows code_read semantics; results are
+ * concatenated and bounded by an overall token budget. This saves the per-call
+ * round-trips of reading files one at a time.
  */
 export function readManyPlugin(): Plugin {
   let ctx: CoreContext;
@@ -25,7 +25,7 @@ export function readManyPlugin(): Plugin {
         name: "read_many",
         title: "Read many",
         description:
-          "Read several targets in ONE call instead of multiple code_read calls. Each target: { path, symbol? (a single symbol), startLine?/endLine? (a range) }; omit both for the whole file (degrades over budget). Output is concatenated, labeled per target, and bounded by an overall token budget. Use this to pull together the few pieces you need at once.",
+          "Read several targets in one call instead of multiple code_read calls. Each target: { path, symbol? (a single symbol), startLine?/endLine? (a range) }; omit both for the whole file (degrades over budget). Output is concatenated, labeled per target, and bounded by an overall token budget. Use this to pull together the few pieces you need at once.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           reads: z

@@ -11,7 +11,7 @@ export interface LoadResult {
 }
 
 /**
- * The ONLY code that touches the SDK registration surface and performs tier
+ * The single place that touches the SDK registration surface and performs tier
  * gating. Plugins merely declare a `tier` and a list of tools; premium plugins
  * are skipped until the entitlement says otherwise.
  */
@@ -25,7 +25,7 @@ export async function loadPlugins(
   const skipped: string[] = [];
 
   // Warn (don't fail) when EFFICIENT_TOKEN_GROUPS names a bundle that doesn't
-  // exist — a typo would otherwise just silently load fewer optional tools.
+  // exist. A typo would otherwise just silently load fewer optional tools.
   if (ctx.config.groups !== undefined) {
     const known = new Set(plugins.map((p) => p.group ?? "core"));
     for (const g of ctx.config.groups) {
@@ -34,7 +34,7 @@ export async function loadPlugins(
   }
 
   // `registerTool` is generic over the (runtime-only) Zod raw shape, so the
-  // static handler type cannot be inferred here. Cast the method ONCE to the
+  // static handler type cannot be inferred here. Cast the method once to the
   // precise signature we use; every call below is then fully type-checked.
   const register = server.registerTool.bind(server) as unknown as (
     name: string,
@@ -55,9 +55,9 @@ export async function loadPlugins(
     }
 
     // Bundle gate: when groups are configured, only enabled bundles register
-    // (orthogonal to tier). The "core" baseline ALWAYS loads — so an additive
+    // (orthogonal to tier). The "core" baseline always loads, so an additive
     // value like EFFICIENT_TOKEN_GROUPS=design (or a typo) can never silently
-    // shed the core toolset; it just adds/omits optional bundles.
+    // shed the core toolset; it just adds or omits optional bundles.
     const group = plugin.group ?? "core";
     if (ctx.config.groups !== undefined && group !== "core" && !ctx.config.groups.has(group)) {
       skipped.push(`${plugin.name} (group:${group})`);

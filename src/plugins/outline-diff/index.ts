@@ -9,11 +9,11 @@ import type { SymbolInfo } from "../../services/ast.js";
 const MAX_FILES = 200;
 
 /**
- * `outline_diff` — the SYMBOL-level delta between two revisions: per changed
- * file, which symbols were added / removed / changed (body differs) — an API
- * surface diff, instead of reading hunks. Distinct from review_branch (which is
- * working-tree, changed-only); this is arbitrary rev-to-rev with add/remove.
- * Read-only git + AST. Free tier.
+ * Computes the symbol-level delta between two revisions. For each changed file
+ * it reports which symbols were added, removed, or changed (body differs), an
+ * API-surface diff rather than a stream of hunks. Unlike review_branch (which is
+ * working-tree, changed-only), this works on arbitrary rev-to-rev with
+ * add/remove. Uses read-only git plus the AST.
  */
 export function outlineDiffPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function outlineDiffPlugin(): Plugin {
         name: "outline_diff",
         title: "Outline diff",
         description:
-          "Symbol-level change between two git revisions: per changed file, the symbols ADDED / REMOVED / CHANGED (definition body differs) — an API-surface diff without reading hunks. Pass ref (base) and optionally to (default: working tree); scope with path. Distinct from review_branch (working-tree, changed-only) — this does arbitrary rev-to-rev with add/remove. Read-only git.",
+          "Symbol-level change between two git revisions: per changed file, the symbols added, removed, or changed (definition body differs), an API-surface diff without reading hunks. Pass ref (base) and optionally to (default: working tree); scope with path. Unlike review_branch (working-tree, changed-only), this does arbitrary rev-to-rev with add/remove. Read-only git.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           ref: z.string().describe('Base revision (branch/commit/tag, e.g. "main", "v1.0").'),
@@ -125,7 +125,7 @@ async function outlineMap(ctx: CoreContext, rel: string, content: string | undef
   const lines = splitLines(content);
   const seen = new Map<string, number>();
   // Occurrence-index duplicate keys (overloads, multiple impl blocks, same-named
-  // defs) by source order so the Nth on each side pairs up — never collapsed.
+  // defs) by source order so the Nth on each side pairs up rather than collapsing.
   for (const s of (await ctx.ast.outline(rel, content)) ?? []) {
     const baseKey = [s.container ?? "", s.kind, s.name].join(" ");
     const n = seen.get(baseKey) ?? 0;

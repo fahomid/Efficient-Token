@@ -8,10 +8,10 @@ const FONT_MAX_BYTES = 30 * 1024 * 1024;
 const FACE_RE = /@font-face\s*\{([^}]*)\}/gi;
 
 /**
- * `font_info` — the family / style / weights a font actually provides, instead
- * of guessing from a filename. Reads the family + subfamily from TTF/OTF files
- * (zero-dep `name` table), and extracts `@font-face` declarations (family,
- * weight, style, src) from CSS. Read-only. Free tier.
+ * Reports the family, style, and weights a font actually provides, instead of
+ * guessing from a filename. Reads the family and subfamily from TTF/OTF files
+ * via the `name` table (no dependencies), and extracts `@font-face` declarations
+ * (family, weight, style, src) from CSS.
  */
 export function fontInfoPlugin(): Plugin {
   let ctx: CoreContext;

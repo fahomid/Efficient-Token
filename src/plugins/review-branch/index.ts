@@ -9,10 +9,10 @@ import type { SymbolInfo } from "../../services/ast.js";
 const MAX_CHANGED_LINES = 3000;
 
 /**
- * `review_branch` — a SEMANTIC change summary: for a ref/branch, list each
- * changed file with the symbols (functions/classes/methods) that changed,
- * instead of raw hunks. Use it to review what changed without reading diffs or
- * files. Read-only git + AST. Free tier.
+ * A semantic change summary. For a ref or branch, lists each changed file with
+ * the symbols (functions, classes, methods) that changed, instead of raw hunks.
+ * Use it to review what changed without reading diffs or files. Uses read-only
+ * git plus the AST.
  */
 export function reviewBranchPlugin(): Plugin {
   let ctx: CoreContext;
@@ -28,7 +28,7 @@ export function reviewBranchPlugin(): Plugin {
         name: "review_branch",
         title: "Review changes",
         description:
-          "Summarize git changes SEMANTICALLY: each changed file with the functions/classes/methods that changed (mapped from the diff to the AST) — not raw hunks. Defaults to uncommitted changes vs HEAD; pass ref (branch/commit/range), staged=true, or path to scope. Use this to review a branch/PR compactly. Read-only.",
+          "Summarize git changes semantically: each changed file with the functions, classes, and methods that changed (mapped from the diff to the AST), not raw hunks. Defaults to uncommitted changes vs HEAD; pass ref (branch/commit/range), staged=true, or path to scope. Use this to review a branch or PR compactly. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           ref: z.string().optional().describe('Compare against this branch/commit/range (e.g. "main", "main...HEAD"). Default: working tree vs HEAD.'),

@@ -10,10 +10,9 @@ const MAX_SCAN_FILES = 10_000;
 const MAX_LINE = 400;
 
 /**
- * `find_references` — locate where a symbol is DEFINED and USED across the
- * workspace, in one call. Definitions come from the AST (precise: kind + line +
- * signature); usages come from an identifier-boundary text scan. Returns
- * `file:line` locations — never whole files. Read-only. Free tier.
+ * Locates where a symbol is defined and used across the workspace in one call.
+ * Definitions come from the AST (kind, line, signature); usages come from an
+ * identifier-boundary text scan. Returns `file:line` locations, not whole files.
  */
 export function findReferencesPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +28,7 @@ export function findReferencesPlugin(): Plugin {
         name: "find_references",
         title: "Find references",
         description:
-          "Find everywhere a symbol (function/class/variable/…) is DEFINED and USED across the workspace, returned as compact file:line locations. Definitions are AST-precise; usages are identifier-boundary text matches. Use this instead of reading many files to trace a symbol. Skips node_modules/.git/build dirs.",
+          "Find everywhere a symbol (function/class/variable/…) is defined and used across the workspace, returned as compact file:line locations. Definitions are AST-precise; usages are identifier-boundary text matches. Use this instead of reading many files to trace a symbol. Skips node_modules/.git/build dirs.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("Identifier to locate (exact name)."),

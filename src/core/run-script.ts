@@ -9,10 +9,10 @@ export interface RunResult {
 }
 
 /**
- * Run `npm run <script>` and, on timeout, kill the WHOLE process tree (not just
- * the shell) so a hung script can't be orphaned: a process group + SIGKILL on
- * POSIX, `taskkill /T /F` on Windows. Output (stdout+stderr) is byte-capped.
- * The `script` name MUST be validated by the caller (it is run via a shell).
+ * Run `npm run <script>`. On timeout, kill the whole process tree, not just the
+ * shell, so a hung script can't be orphaned: a process group plus SIGKILL on
+ * POSIX, `taskkill /T /F` on Windows. Output (stdout and stderr) is byte-capped.
+ * The caller must validate the `script` name, since it is run via a shell.
  */
 export function runNpmScript(cwd: string, script: string, timeoutMs: number): Promise<RunResult> {
   return runShell(cwd, `npm run ${script}`, timeoutMs);
@@ -20,12 +20,12 @@ export function runNpmScript(cwd: string, script: string, timeoutMs: number): Pr
 
 /**
  * Like {@link runNpmScript} but forwards extra args to the script after `--`
- * (e.g. a test filter). Each arg is double-quoted into the command line; the
- * CALLER MUST validate every arg against a shell-safe allowlist (no quotes,
- * `$`, backticks, `%`, `!`, or shell metacharacters) so nothing can escape the
- * quotes, AND reject a leading `-` (which the receiving program would parse as
- * an OPTION — argv-level injection that quoting cannot stop) — this is what
- * keeps "only package.json scripts" intact.
+ * (e.g. a test filter). Each arg is double-quoted into the command line. The
+ * caller must validate every arg against a shell-safe allowlist (no quotes, `$`,
+ * backticks, `%`, `!`, or shell metacharacters) so nothing can escape the
+ * quotes, and reject a leading `-`, which the receiving program would parse as an
+ * option (argv-level injection that quoting cannot stop). That is what keeps the
+ * "only package.json scripts" guarantee intact.
  */
 export function runNpmScriptArgs(cwd: string, script: string, args: readonly string[], timeoutMs: number): Promise<RunResult> {
   const tail = args.length > 0 ? ` -- ${args.map((a) => `"${a}"`).join(" ")}` : "";
@@ -44,10 +44,10 @@ function runShell(cwd: string, commandLine: string, timeoutMs: number): Promise<
 }
 
 /**
- * Run a FIXED binary with an argv array and NO shell — user-supplied values
- * (e.g. a file path) go as separate argv entries and therefore can't inject
- * shell metacharacters or be re-split. The caller MUST pass a constant binary
- * name (not user input). Same byte-cap + process-tree-kill as {@link runShell}.
+ * Run a fixed binary with an argv array and no shell. User-supplied values (e.g.
+ * a file path) go as separate argv entries, so they can't inject shell
+ * metacharacters or be re-split. The caller must pass a constant binary name,
+ * not user input. Same byte-cap and process-tree-kill as {@link runShell}.
  * `notFound` is true when the binary is missing on PATH (ENOENT).
  */
 export function runBinary(cwd: string, bin: string, args: readonly string[], timeoutMs: number): Promise<RunResult> {
@@ -67,8 +67,8 @@ function collect(child: ReturnType<typeof spawn>, isWin: boolean, timeoutMs: num
     let bytes = 0;
     const cap = 16 * 1024 * 1024;
     // One incremental decoder per stream so a multibyte UTF-8 sequence split
-    // across two chunks is reassembled (not corrupted to U+FFFD). `bytes` counts
-    // real UTF-8 bytes so the 16 MiB cap matches its name.
+    // across two chunks is reassembled rather than corrupted to U+FFFD. `bytes`
+    // counts real UTF-8 bytes so the 16 MiB cap matches its name.
     const makeOnData = (): ((d: Buffer) => void) => {
       const decoder = new StringDecoder("utf8");
       return (d: Buffer): void => {
@@ -120,7 +120,7 @@ function killTree(pid: number | undefined, isWin: boolean): void {
   }
 }
 
-/** Keep the LAST lines that fit in ~maxTokens (errors/summaries are at the end). */
+/** Keep the last lines that fit in ~maxTokens; errors and summaries are at the end. */
 export function boundedTail(text: string, maxTokens: number): string {
   const trimmed = text.replace(/\s+$/, "");
   if (trimmed === "") return "(no output)";

@@ -10,10 +10,10 @@ const MAX_SCAN_FILES = 10_000;
 const DEFAULT_HEAD = 60;
 
 /**
- * `call_hierarchy` — the local call neighborhood of a function in ONE call: its
- * CALLEES (functions it calls, with where each is defined) and its CALLERS
- * (workspace call sites). Saves running call_sites + reading the body to find
- * callees. AST-precise. Read-only. Free tier.
+ * Report the local call neighborhood of a function in one call: its callees
+ * (functions it calls, with where each is defined) and its callers (workspace
+ * call sites). This avoids running call_sites then reading the body to find
+ * callees. Resolution is AST-precise.
  */
 export function callHierarchyPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function callHierarchyPlugin(): Plugin {
         name: "call_hierarchy",
         title: "Call hierarchy",
         description:
-          "The call neighborhood of a function in one call: its CALLEES (functions it calls, each annotated with where it's defined if in the workspace) and its CALLERS (workspace call sites). AST-precise (real calls, not text). Pass symbol (+ optional path to disambiguate). For callers only, call_sites is lighter. Supported: TS/JS, Python, Go, Rust, Java, C/C++, Ruby. Read-only.",
+          "The call neighborhood of a function in one call: its callees (functions it calls, each annotated with where it's defined if in the workspace) and its callers (workspace call sites). AST-precise: real calls, not text. Pass symbol, plus an optional path to disambiguate. For callers only, call_sites is lighter. Supported: TS/JS, Python, Go, Rust, Java, C/C++, Ruby. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("The function/method name."),

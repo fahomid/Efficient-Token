@@ -11,9 +11,9 @@ const MAX_SCAN_FILES = 10_000;
 const ciFs = process.platform === "win32" || process.platform === "darwin";
 
 /**
- * `import_map` — a file's dependency edges: what it imports (deps) and/or who
- * imports it (importers), resolved across the workspace, instead of grepping for
- * import lines and resolving paths by hand. JS/TS family. Read-only. Free tier.
+ * Maps a file's dependency edges: what it imports (deps) and/or who imports it
+ * (importers), resolved across the workspace, instead of grepping for import
+ * lines and resolving paths by hand. Handles the JS/TS family.
  */
 export function importMapPlugin(): Plugin {
   let ctx: CoreContext;
@@ -29,7 +29,7 @@ export function importMapPlugin(): Plugin {
         name: "import_map",
         title: "Import map",
         description:
-          "Show a file's import edges: imports (what it depends on — workspace files vs external packages) and/or importers (which workspace files import it), resolved across the workspace — instead of grepping import lines and resolving paths by hand. direction: both (default) | imports | importers. JS/TS family (.ts/.tsx/.js/.mjs/…). Read-only.",
+          "Show a file's import edges: imports (what it depends on: workspace files vs external packages) and/or importers (which workspace files import it), resolved across the workspace, instead of grepping import lines and resolving paths by hand. direction: both (default) | imports | importers. JS/TS family (.ts/.tsx/.js/.mjs/…). Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().describe("File path relative to the workspace root."),

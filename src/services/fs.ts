@@ -39,9 +39,9 @@ export class SafeFs {
   }
 
   /**
-   * Like {@link read} but preserves the EXACT bytes (BOM kept). Use this for
-   * edits, where a faithful round-trip matters and the content is matched/rewritten
-   * verbatim rather than displayed.
+   * Like {@link read} but preserves the exact bytes, keeping any BOM. Use this
+   * for edits, where a faithful round-trip matters and the content is matched and
+   * rewritten verbatim rather than displayed.
    */
   async readRaw(p: string): Promise<ReadResult> {
     return this.readImpl(p, false);
@@ -69,9 +69,9 @@ export class SafeFs {
   }
 
   /**
-   * Read a file's raw BYTES, sandbox + realpath checked. `maxBytes` caps the
-   * read: the whole file if `<= maxBytes`, else throws (callers degrade rather
-   * than emit a huge blob). Bypasses the UTF-8/text size limit — for images and
+   * Read a file's raw bytes, sandbox and realpath checked. `maxBytes` caps the
+   * read: the whole file if `<= maxBytes`, else throws so callers degrade rather
+   * than emit a huge blob. Bypasses the UTF-8 text size limit, for images and
    * other binary assets. Returns `{ abs, bytes }`.
    */
   async readBytes(p: string, maxBytes: number): Promise<{ abs: string; bytes: Buffer }> {
@@ -109,12 +109,12 @@ export class SafeFs {
   }
 
   /**
-   * Atomically write text: write a temp file in the SAME directory, then rename.
-   * Same-dir temp keeps the rename on one filesystem so it is truly atomic.
+   * Atomically write text: write a temp file in the same directory, then rename.
+   * A same-dir temp keeps the rename on one filesystem so it is truly atomic.
    *
-   * Symlink-safe (matching {@link SafeFs.read}): the nearest existing ancestor is
-   * `realpath`-checked BEFORE `mkdir`, and the destination directory is
-   * `realpath`-checked again AFTER it exists. All writes target the resolved real
+   * Symlink-safe, matching {@link SafeFs.read}: the nearest existing ancestor is
+   * `realpath`-checked before `mkdir`, and the destination directory is
+   * `realpath`-checked again once it exists. All writes target the resolved real
    * directory, so a symlinked path component cannot escape the workspace root.
    */
   async writeAtomic(p: string, content: string): Promise<string> {

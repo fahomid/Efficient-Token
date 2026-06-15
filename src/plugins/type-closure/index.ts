@@ -13,10 +13,10 @@ const MAX_SCAN_FILES = 10_000;
 const IDENT_RE = /[A-Za-z_$][\w$]*/g;
 
 /**
- * `type_closure` — a type's definition plus the VERBATIM definitions of the
- * workspace types it transitively references (cycle-safe, depth/budget-bounded),
- * so you can understand a complex type without chasing each referenced type by
- * hand. Read-only. Free tier.
+ * Returns a type's definition plus the verbatim definitions of the workspace
+ * types it transitively references (cycle-safe, depth- and budget-bounded), so
+ * you can understand a complex type without chasing each referenced type by
+ * hand.
  */
 export function typeClosurePlugin(): Plugin {
   let ctx: CoreContext;
@@ -32,7 +32,7 @@ export function typeClosurePlugin(): Plugin {
         name: "type_closure",
         title: "Type closure",
         description:
-          "Given a type/interface/enum/class name, return its definition plus the verbatim definitions of the workspace types it transitively references (cycle-safe, depth-bounded) — so you can grasp a complex type in one call instead of opening each referenced type. Scope with path/type; tune maxDepth. Returns real source (faithful). Read-only.",
+          "Given a type/interface/enum/class name, return its definition plus the verbatim definitions of the workspace types it transitively references (cycle-safe, depth-bounded), so you can grasp a complex type in one call instead of opening each referenced type. Scope with path or type, and tune maxDepth. Returns real source. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("Name of the type/interface/enum/class to start from."),

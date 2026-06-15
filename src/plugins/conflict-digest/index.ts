@@ -15,10 +15,10 @@ interface ConflictBlock {
 }
 
 /**
- * `conflict_digest` — show ONLY the three-way conflict regions of merge-
- * conflicted files (ours / base / theirs, verbatim + line-numbered), instead of
- * reading whole files to hunt for `<<<<<<<` markers. Extracts; never proposes a
- * resolution (that's the model's call). Read-only. Free tier.
+ * Shows just the three-way conflict regions of merge-conflicted files (ours /
+ * base / theirs, verbatim and line-numbered), instead of reading whole files to
+ * hunt for `<<<<<<<` markers. Extracts the regions; it does not propose a
+ * resolution, which is the model's call.
  */
 export function conflictDigestPlugin(): Plugin {
   let ctx: CoreContext;
@@ -34,7 +34,7 @@ export function conflictDigestPlugin(): Plugin {
         name: "conflict_digest",
         title: "Conflict digest",
         description:
-          "List unresolved merge conflicts as just their three-way regions — per file, per conflict: the ours / base / theirs sides sliced VERBATIM and line-numbered — instead of reading whole conflicted files to find the markers. Optionally scope to a path. Extracts only; you decide the resolution. Read-only git.",
+          "List unresolved merge conflicts as just their three-way regions. Per file, per conflict, it slices the ours / base / theirs sides verbatim and line-numbered, instead of reading whole conflicted files to find the markers. Optionally scope to a path. It extracts only; you decide the resolution. Read-only git.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().optional().describe("Limit to this path (relative to the workspace)."),
@@ -129,8 +129,8 @@ function parseConflicts(content: string): ConflictBlock[] {
     i++;
     while (i < lines.length && !lines[i]!.startsWith(">>>>>>>")) {
       const l = lines[i]!;
-      // Match git's marker GRAMMAR (a pure run of >=7 marker chars, base/ours
-      // may carry a " label") and honor section ORDER, so a content line that
+      // Match git's marker grammar (a pure run of >=7 marker chars; base/ours
+      // may carry a " label") and honor section order, so a content line that
       // merely starts with `=======` or `|||||||` (a Markdown rule, a table row)
       // is not mistaken for a separator and dropped.
       if (section === "ours" && /^\|{7,}( .*)?$/.test(l)) {
