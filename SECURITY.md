@@ -14,12 +14,12 @@ the report is triaged.
 
 ## Supported versions
 
-This is pre-1.0 software; security fixes land on the latest released minor
-version. Pin a version and watch releases for updates.
+Security fixes land on the latest released minor version. Pin a version and watch
+releases for updates.
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x | ✅ |
+| 1.0.x | ✅ |
 
 ## Security model
 
