@@ -42,7 +42,7 @@
     "rebuild": "npm run clean && npm run build",
     "typecheck": "tsc -p tsconfig.check.json",
     "dev": "tsx src/index.ts",
-    "smoke": "tsx scripts/smoke.ts",
+    "smoke": "node --liftoff-only --wasm-num-compilation-tasks=1 --wasm-lazy-validation --import tsx scripts/smoke.ts",
     "e2e": "tsx scripts/e2e.ts",
     "discover": "tsx scripts/discover.ts",
     "toolcost": "tsx scripts/toolcost.ts",

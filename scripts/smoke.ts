@@ -229,10 +229,11 @@ async function main(): Promise<void> {
     check("ast.outline undefined when no grammar", noGrammar === undefined);
 
     // --- multi-language outline coverage (LANG_CASES) -------------------
-    // Run in-process. Each grammar loads into web-tree-sitter's shared WASM heap,
-    // which only grows; the full set exhausts memory under Node 24's V8 (even one
-    // large grammar like swift/scala). That is why the Node 24 CI job is
-    // non-blocking; Nodes 18/20/22 handle the whole set fine.
+    // Run in-process. Loading every grammar into web-tree-sitter's WASM heap can
+    // exhaust V8's "Zone" memory while compiling the large grammars (swift, scala)
+    // under Node 24; the `smoke` npm script passes low-memory WASM flags
+    // (--liftoff-only, --wasm-num-compilation-tasks=1, --wasm-lazy-validation) so
+    // it completes there too.
     for (const { ext, code, expect } of LANG_CASES) {
       const out = await ctx.ast.outline(`sample.${ext}`, code);
       const names = new Set((out ?? []).map((s) => s.name));
