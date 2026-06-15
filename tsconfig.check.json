@@ -1,0 +1,10 @@
+{
+  // Type-check the whole repo (src + scripts) without emitting. The build uses
+  // tsconfig.json, which is scoped to src so dist only contains the server.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src", "scripts"]
+}

@@ -35,10 +35,14 @@ function check(name: string, cond: boolean, detail = ""): void {
   }
 }
 
-function resultText(res: { content?: Array<{ type: string; text?: string }> }): string {
-  return (res.content ?? [])
+// client.callTool returns a union (a content result or a legacy toolResult), and
+// each content item carries an index signature that types `text` as unknown.
+// Accept unknown and pull the text content out defensively.
+function resultText(res: unknown): string {
+  const content = (res as { content?: Array<{ type: string; text?: unknown }> }).content ?? [];
+  return content
     .filter((c) => c.type === "text")
-    .map((c) => c.text ?? "")
+    .map((c) => (typeof c.text === "string" ? c.text : ""))
     .join("\n");
 }
 
