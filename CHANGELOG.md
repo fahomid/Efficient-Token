@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It opted out of per-target accounting, so it under-counts rather than overstates.
 - Neutral wording for the startup "skipped" log, which was mislabeled "not
   entitled" for bundle skips.
+- `move_symbol` import-back into the source now keeps the `.js` extension when the
+  project uses it (inferred from the source, destination, and any importer being
+  rewritten), so it resolves under NodeNext. It also reports the moved code's
+  same-file dependencies (any case, not just capitalized) so the destination's
+  imports can be completed.
+- `color_contrast` recognizes the full set of CSS named colors (e.g.
+  `rebeccapurple`), not just a small subset.
+- `repo_map` emits each directory header once, even when a subdirectory name sorts
+  between that directory's own files.
 
 ## [0.1.0] - 2026-06-14
 

@@ -833,6 +833,7 @@ async function main(): Promise<void> {
     check("color_contrast converts formats", colConv.includes("#3366ff") && colConv.includes("hsl("));
     check("color_contrast parses named + hsl to the same hex", textOf(await col.handler({ color: "red" })).includes("#ff0000") && textOf(await col.handler({ color: "hsl(0, 100%, 50%)" })).includes("#ff0000"));
     check("color_contrast rejects a bad color", (await col.handler({ color: "notacolor" })).isError === true);
+    check("color_contrast resolves full CSS names", textOf(await col.handler({ color: "rebeccapurple" })).includes("#663399") && textOf(await col.handler({ color: "aliceblue" })).includes("#f0f8ff"));
 
     // --- svg_digest plugin ----------------------------------------------
     await ctx.fs.writeAtomic("svg/icon.svg", '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">\n  <defs><linearGradient id="grad1"/></defs>\n  <g id="layer1"><path d="M0 0L10 10"/><path d="M2 2"/><circle id="dot" cx="5" cy="5" r="2"/></g>\n  <rect x="0" y="0" width="24" height="24"/>\n</svg>\n');
@@ -1046,7 +1047,7 @@ async function main(): Promise<void> {
     const bAfter = (await ctx.fs.read("ms/b.ts")).content;
     const cAfter = (await ctx.fs.read("ms/c.ts")).content;
     check("move_symbol relocates the definition", !moveRes.isError && !aAfter.includes("function moved()") && bAfter.includes("function moved()") && bAfter.includes("existing"));
-    check("move_symbol re-imports into source when still used", aAfter.includes('import { moved } from "./b'));
+    check("move_symbol re-imports into source with the .js extension when still used", aAfter.includes('import { moved } from "./b.js"'));
     check("move_symbol rewrites named importers", cAfter.includes('from "./b.js"') && !cAfter.includes('from "./a.js"'));
     check("move_symbol unknown symbol errors", (await ms.handler({ symbol: "nopeSym", from: "ms/a.ts", to: "ms/b.ts" })).isError === true);
     // adversarial-review fix: a same-named import of a different (dotted) module is not rewritten
@@ -1063,6 +1064,19 @@ async function main(): Promise<void> {
     await ms.handler({ symbol: "giz", from: "ms3/dep.ts", to: "ms3/lib.ts" });
     const use3 = (await ctx.fs.readRaw("ms3/use.ts")).content;
     check("move_symbol preserves BOM in a rewritten importer", use3.charCodeAt(0) === 0xfeff && use3.includes('"./lib'));
+    // fix: the destination's imports are REPORTED, not synthesized (synthesizing
+    // is bug-prone: non-exported siblings, property accesses, shadowing). Same-file
+    // deps are listed; a member access (c.area) must not be reported as a dep.
+    await ctx.fs.writeAtomic("ms4/src.ts", "export interface Cfg { n: number }\nexport function helper() { return 7; }\nexport function area() { return 0; }\nexport function feat(c: Cfg) { return helper() + c.n + c.area; }\n");
+    await ctx.fs.writeAtomic("ms4/use.ts", 'import { feat } from "./src.js";\nexport const r = feat({ n: 1 });\n');
+    const mv4 = await ms.handler({ symbol: "feat", from: "ms4/src.ts", to: "ms4/dest.ts" });
+    const mv4t = textOf(mv4);
+    const dest4 = (await ctx.fs.read("ms4/dest.ts")).content;
+    const use4 = (await ctx.fs.read("ms4/use.ts")).content;
+    check("move_symbol reports same-file deps for the destination (no silent omission)", !mv4.isError && mv4t.includes("helper") && mv4t.includes("Cfg"));
+    check("move_symbol does not report a member-access name as a dep", !mv4t.includes("area"));
+    check("move_symbol does not synthesize the destination's imports", dest4.includes("function feat") && !dest4.includes("import "));
+    check("move_symbol rewrites the importer to the new module with .js", use4.includes('from "./dest.js"'));
 
     // --- code_context plugin --------------------------------------------
     await ctx.fs.writeAtomic("cc/util.ts", "export function helper(x: number): number {\n  return x * 2;\n}\n");
@@ -1097,6 +1111,12 @@ async function main(): Promise<void> {
 
     const m2 = await rm.handler({ path: "rmap", maxTokens: 1 });
     check("repo_map respects token budget", textOf(m2).includes("truncated"));
+    // fix: a subdirectory whose name sorts between a directory's own files must
+    // not cause that directory's header to repeat (rmap/util sorts before zzz.ts).
+    await ctx.fs.writeAtomic("rmap/zzz.ts", "export function zzzFn() {}\n");
+    const m3t = textOf(await rm.handler({ path: "rmap" }));
+    const rmapHeaders = m3t.split("\n").filter((l) => l === "rmap/").length;
+    check("repo_map emits each directory header once", rmapHeaders === 1, `headers=${rmapHeaders}`);
 
     // --- diff_digest plugin ---------------------------------------------
     // Non-repo: the smoke root is not a git repo.

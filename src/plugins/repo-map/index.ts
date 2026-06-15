@@ -52,6 +52,18 @@ export function repoMapPlugin(): Plugin {
 
             if (scan.files.length === 0) return ok("repo_map: no files found for the given scope.");
 
+            // Group each directory's files together (sorted by directory, then name)
+            // so each directory header is emitted exactly once, even when a
+            // subdirectory name sorts between that directory's own files.
+            const dirOf = (rel: string): string => { const i = rel.lastIndexOf("/"); return i === -1 ? "" : rel.slice(0, i); };
+            const baseOf = (rel: string): string => { const i = rel.lastIndexOf("/"); return i === -1 ? rel : rel.slice(i + 1); };
+            const files = [...scan.files].sort((a, b) => {
+              const da = dirOf(a.rel), db = dirOf(b.rel);
+              if (da !== db) return da < db ? -1 : 1;
+              const ba = baseOf(a.rel), bb = baseOf(b.rel);
+              return ba < bb ? -1 : ba > bb ? 1 : 0;
+            });
+
             const lines: string[] = [];
             const budgetChars = maxTokens * 4;
             let used = 0;
@@ -60,7 +72,7 @@ export function repoMapPlugin(): Plugin {
             let symbolCount = 0;
             let budgetHit = false;
 
-            for (const f of scan.files) {
+            for (const f of files) {
               const slash = f.rel.lastIndexOf("/");
               const dir = slash === -1 ? "." : f.rel.slice(0, slash);
               const base = slash === -1 ? f.rel : f.rel.slice(slash + 1);

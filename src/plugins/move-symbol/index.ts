@@ -24,9 +24,10 @@ interface PlanFile {
  * Relocates a definition from one file to another atomically, and rewrites the
  * named imports and re-exports of it across the workspace to point at the new
  * file (adding an import back into the source file if it still uses the symbol).
- * Supports dryRun, is syntax-guarded, and is all-or-nothing. Default and
- * namespace importers, and the moved code's own dependencies, are flagged rather
- * than guessed. Handles JS/TS.
+ * The moved code's dependencies are reported so the destination's imports can be
+ * completed: names still defined in the source are listed, and external or
+ * default/namespace references are flagged rather than guessed. Supports dryRun,
+ * is syntax-guarded, and is all-or-nothing. Handles JS/TS.
  */
 export function moveSymbolPlugin(): Plugin {
   let ctx: CoreContext;
@@ -42,7 +43,7 @@ export function moveSymbolPlugin(): Plugin {
         name: "move_symbol",
         title: "Move a symbol",
         description:
-          "Move a definition (function, class, type, or const) between files in one atomic call, rewriting the named imports and re-exports of it across the workspace (and importing it back into the source if still used). dryRun previews; all-or-nothing and syntax-guarded. Default and namespace imports, and the moved code's own deps, are reported rather than guessed. JS/TS.",
+          "Move a definition (function, class, type, or const) between files in one atomic call, rewriting the named imports/re-exports of it across the workspace (and importing it back into the source if still used). Reports the moved code's dependencies so you can complete the destination's imports; default/namespace imports are flagged. dryRun previews; all-or-nothing and syntax-guarded. JS/TS.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("Name of the symbol to move."),
@@ -83,7 +84,7 @@ export function moveSymbolPlugin(): Plugin {
             if (left.endsWith("\n") && right.startsWith("\n")) right = right.replace(/^\n+/, "\n");
             let newFrom = left + right;
 
-            // 3) Destination file with the definition appended (created if missing).
+            // 3) Read the destination (created if missing).
             let toRaw: string | null = null;
             try {
               toRaw = (await ctx.fs.readRaw(String(args.to))).content;
@@ -92,20 +93,9 @@ export function moveSymbolPlugin(): Plugin {
             }
             const toBom = toRaw !== null && toRaw.charCodeAt(0) === 0xfeff;
             const toCode = toRaw === null ? null : toBom ? toRaw.slice(1) : toRaw;
-            const newToBody = toCode === null || toCode.trim() === ""
-              ? `${defSource}\n`
-              : `${toCode.replace(/\s*$/, "")}\n\n${defSource}\n`;
-
-            // 4) If the source still references the symbol, import it back from `to`.
             const isJs = JS_EXTS.includes(extOf(fromRel));
-            let addedBackImport = false;
-            if (isJs && identifierBoundary(symbol, "").test(newFrom)) {
-              const spec = moduleSpecifier(fromAbs, toAbs, usesJsExt(fromCode));
-              newFrom = `import { ${symbol} } from "${spec}";\n${newFrom}`;
-              addedBackImport = true;
-            }
 
-            // 5) Rewrite named imports/re-exports of the symbol elsewhere: from -> to.
+            // 4) Rewrite named imports/re-exports of the symbol elsewhere: from -> to.
             const fromKey = moduleKey(fromAbs).toLowerCase();
             const rewrites: PlanFile[] = [];
             const flagged: string[] = [];
@@ -130,14 +120,57 @@ export function moveSymbolPlugin(): Plugin {
               if (res.flaggedNonNamed) flagged.push(f.rel);
             }
 
-            // 6) Assemble the plan.
+            // 5) Decide the `.js` extension convention from every relative import
+            //    observed in this operation (source, destination, and any rewritten
+            //    importer), so generated imports match the project even when the
+            //    source file has no relative imports of its own.
+            const wantJsExt =
+              usesJsExt(fromCode) ||
+              (toCode !== null && usesJsExt(toCode)) ||
+              rewrites.some((r) => usesJsExt(r.original ?? ""));
+
+            // 6) If the source still references the symbol, import it back from `to`.
+            let addedBackImport = false;
+            if (isJs && identifierBoundary(symbol, "").test(newFrom)) {
+              newFrom = `import { ${symbol} } from "${moduleSpecifier(fromAbs, toAbs, wantJsExt)}";\n${newFrom}`;
+              addedBackImport = true;
+            }
+
+            // 7) Report the moved code's dependencies so the destination's imports
+            //    can be completed. The tool relocates code faithfully but does not
+            //    synthesize the destination's import graph: knowing which exported
+            //    sibling each free reference binds to (vs. shadowing, property
+            //    accesses, re-exports) is a judgment best left to the caller. Names
+            //    still defined in the source are listed explicitly; other capital-ish
+            //    references are flagged as likely external.
+            const sameFileDeps: string[] = [];
+            const externalDeps: string[] = [];
+            if (isJs) {
+              const remaining = await ctx.ast.outline(String(args.from), newFrom);
+              const remainingNames = new Set((remaining ?? []).map((s) => s.name));
+              for (const id of referencedIdentifiers(defSource, symbol)) {
+                if (remainingNames.has(id)) {
+                  if (!sameFileDeps.includes(id)) sameFileDeps.push(id);
+                } else if (/[A-Z_]/.test(id) && !externalDeps.includes(id)) {
+                  externalDeps.push(id);
+                }
+              }
+              sameFileDeps.sort();
+            }
+
+            // 8) Destination body: existing content (if any) + the moved definition.
+            const newToBody = toCode === null || toCode.trim() === ""
+              ? `${defSource}\n`
+              : `${toCode.replace(/\s*$/, "")}\n\n${defSource}\n`;
+
+            // 9) Assemble the plan.
             const plan: PlanFile[] = [
-              { rel: fromRel, original: fromRaw, next: (fromBom ? "" + String.fromCharCode(0xfeff) + "" : "") + newFrom },
-              { rel: toRel, original: toRaw, next: (toBom ? "" + String.fromCharCode(0xfeff) + "" : "") + newToBody },
+              { rel: fromRel, original: fromRaw, next: (fromBom ? String.fromCharCode(0xfeff) : "") + newFrom },
+              { rel: toRel, original: toRaw, next: (toBom ? String.fromCharCode(0xfeff) : "") + newToBody },
               ...rewrites.map((r) => ({ ...r })),
             ];
 
-            // 7) Syntax-guard every touched (JS/TS) file.
+            // 10) Syntax-guard every touched (JS/TS) file.
             if (args.validate !== false) {
               for (const pf of plan) {
                 const issues = await ctx.ast.introducedSyntaxErrors(pf.rel, pf.original ?? "", pf.next);
@@ -147,14 +180,13 @@ export function moveSymbolPlugin(): Plugin {
               }
             }
 
-            const deps = movedDependencies(defSource, symbol);
-            const report = buildReport(target, fromRel, toRel, plan, rewrites.length, addedBackImport, flagged, deps);
+            const report = buildReport(target, fromRel, toRel, plan, rewrites.length, addedBackImport, flagged, sameFileDeps, externalDeps);
 
             if (args.dryRun === true) {
               return ok(`move_symbol DRY RUN — no files written.\n${report}`);
             }
 
-            // 8) Write atomically with rollback.
+            // 11) Write atomically with rollback.
             const written: PlanFile[] = [];
             try {
               for (const pf of plan) {
@@ -210,23 +242,31 @@ function importedName(part: string): string {
   return part.replace(/^type\s+/, "").split(/\s+as\s+/)[0]!.trim();
 }
 
-/** Identifiers the moved code references that may need importing in `to`. */
-function movedDependencies(defSource: string, symbol: string): string[] {
-  const ids = new Set(defSource.match(/[A-Za-z_$][\w$]*/g) ?? []);
+const KEYWORDS = new Set(["const", "let", "var", "function", "return", "if", "else", "for", "while", "class", "interface", "type", "export", "import", "new", "this", "true", "false", "null", "undefined", "void", "string", "number", "boolean", "async", "await", "extends", "implements", "public", "private", "readonly", "static", "of", "in", "typeof", "as"]);
+
+/**
+ * Identifiers the moved code references, for the dependency report. Member-access
+ * properties (`obj.foo`) are dropped so a property name isn't mistaken for a free
+ * reference; keywords and the moved symbol's own name are excluded. This feeds a
+ * human-facing hint, not an automatic edit, so light over-inclusion is harmless.
+ */
+function referencedIdentifiers(defSource: string, symbol: string): string[] {
+  const cleaned = defSource.replace(/\.\s*[A-Za-z_$][\w$]*/g, ".");
+  const ids = new Set(cleaned.match(/[A-Za-z_$][\w$]*/g) ?? []);
   ids.delete(symbol);
-  const KEYWORDS = new Set(["const", "let", "var", "function", "return", "if", "else", "for", "while", "class", "interface", "type", "export", "import", "new", "this", "true", "false", "null", "undefined", "void", "string", "number", "boolean", "async", "await", "extends", "implements", "public", "private", "readonly", "static", "of", "in", "typeof", "as"]);
-  return [...ids].filter((id) => !KEYWORDS.has(id) && /[A-Z_]/.test(id)).slice(0, 25);
+  return [...ids].filter((id) => !KEYWORDS.has(id));
 }
 
-function buildReport(target: SymbolInfo, fromRel: string, toRel: string, plan: PlanFile[], rewriteCount: number, addedBack: boolean, flagged: string[], deps: string[]): string {
+function buildReport(target: SymbolInfo, fromRel: string, toRel: string, plan: PlanFile[], rewriteCount: number, addedBack: boolean, flagged: string[], sameFileDeps: string[], externalDeps: string[]): string {
   const lines = [
     `Moved ${target.kind} ${target.name}: ${fromRel} -> ${toRel}`,
     `  files affected: ${plan.length} (source, destination${rewriteCount ? `, ${rewriteCount} importer(s)` : ""})`,
   ];
   if (addedBack) lines.push(`  + added an import of ${target.name} back into ${fromRel} (still used there)`);
   if (rewriteCount) lines.push(`  ~ rewrote named imports/re-exports in ${rewriteCount} file(s)`);
+  if (sameFileDeps.length) lines.push(`  ! complete ${toRel}'s imports: ${sameFileDeps.join(", ")} (used by ${target.name}, still defined in ${fromRel})`);
   if (flagged.length) lines.push(`  ! manual: default/namespace import of ${target.name} in: ${[...new Set(flagged)].join(", ")}`);
-  if (deps.length) lines.push(`  ! verify ${toRel} imports what ${target.name} uses: ${deps.join(", ")}`);
+  if (externalDeps.length) lines.push(`  ! verify ${toRel} also imports: ${[...new Set(externalDeps)].join(", ")}`);
   return lines.join("\n");
 }
 
