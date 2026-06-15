@@ -53,6 +53,7 @@ work, running checks, and editing.
   check. The package exports the plugin contract types so a premium package can
   build against it. No premium code or entitlement implementation is included.
 - Strict TypeScript and ESM (NodeNext). Self-tests via `npm run smoke` and a
-  real-stdio `npm run e2e`; CI runs on Ubuntu and Windows across Node 18, 20, 22.
+  real-stdio `npm run e2e`; CI runs on Ubuntu and Windows across Node 18, 20, 22,
+  and 24.
 
 [1.0.1]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.1
