@@ -1,5 +1,8 @@
 name: Release
 
+# Name each run after the tag being released, e.g. "Release v1.0.1".
+run-name: Release ${{ github.ref_name }}
+
 # Publish to npm when a version tag (e.g. v1.0.1) is pushed.
 on:
   push:
