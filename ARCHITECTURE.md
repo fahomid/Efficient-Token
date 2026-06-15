@@ -243,6 +243,28 @@ plus Ed25519-signed license tokens, verified offline against an embedded public
 key; periodic online re-check with offline grace; only license status crosses the
 wire, never user code). Nothing else changes.
 
+### Premium plugins (open-core)
+
+The free tier in this package is MIT. Premium plugins live in a separate,
+privately-licensed package that a customer installs alongside it; their source is
+never published here. They depend only on the public contract
+(`import type { Plugin, CoreContext } from "efficient-token"`), implement
+`Plugin` with `tier: "premium"`, and are loaded at runtime by
+`loadPremiumPlugins()` (`src/core/premium.ts`):
+
+- It optionally imports the package named `efficient-token-premium` (override with
+  the `EFFICIENT_TOKEN_PREMIUM` env var: a package name or a file URL). A
+  non-literal specifier keeps the public build from depending on it, so its
+  absence is the normal, silent case.
+- The package's entry exports `premiumPlugins`: a function returning `Plugin[]`,
+  or a `Plugin[]` directly.
+- Discovered plugins are appended to the registry, then the loader's existing tier
+  gate decides registration. This hook is discovery only; entitlement is the sole
+  enforcement point, so premium tools stay dark until `isEntitled("premium")`.
+
+So shipping premium needs no change to the core: implement the real
+`createEntitlement()`, then publish the private package.
+
 ---
 
 ## Core services and responsibilities

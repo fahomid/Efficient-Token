@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   was returned.
 - `npm run toolcost`: a deterministic report of the fixed per-turn token cost of
   every tool definition, broken down by bundle.
+- Open-core premium seam: an optional runtime hook (`loadPremiumPlugins`) loads
+  premium plugins from a separate, privately-licensed package if installed
+  (override the specifier with `EFFICIENT_TOKEN_PREMIUM`), gated by the existing
+  tier check so premium tools stay dark until entitled. The package now exports
+  the plugin contract types (`Plugin`, `CoreContext`, etc.) and ships type
+  declarations, so a premium package can build against it. No premium code or
+  entitlement implementation is included.
 
 ### Changed
 - Core read/edit/write/search/glob tools aligned to Claude Code's built-ins,

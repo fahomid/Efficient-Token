@@ -8,6 +8,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadConfig } from "./core/config.js";
 import type { CoreContext, Plugin } from "./core/contract.js";
 import { loadPlugins } from "./core/loader.js";
+import { loadPremiumPlugins } from "./core/premium.js";
+
+// Public API for premium plugin authors: a premium package implements these
+// against this package's contract (open-core seam).
+export type { Plugin, CoreContext, ToolDef, ToolResult, ToolContent, ToolAnnotations, Tier } from "./core/contract.js";
 
 import { AstService } from "./services/ast.js";
 import { TokenBudgeter } from "./services/budget.js";
@@ -139,7 +144,10 @@ async function main(): Promise<void> {
   await ctx.ast.init();
 
   const server = new McpServer({ name: "efficient-token", version: VERSION });
-  const result = await loadPlugins(server, ctx, plugins);
+  // Open-core: append any optionally-installed premium plugins. The loader's tier
+  // gate decides whether they actually register (they stay dark until entitled).
+  const premium = await loadPremiumPlugins(log);
+  const result = await loadPlugins(server, ctx, [...plugins, ...premium]);
 
   log.info(`workspace root: ${config.root}`);
   log.info(`tier: ${ctx.license.tier}; tools: ${result.registeredTools.join(", ")}`);

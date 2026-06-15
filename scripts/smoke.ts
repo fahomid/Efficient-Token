@@ -9,6 +9,7 @@ import { execFile } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
@@ -22,6 +23,7 @@ import { SafeFs } from "../src/services/fs.js";
 import { createEntitlement } from "../src/services/license.js";
 import { createLogger } from "../src/services/logger.js";
 import { loadPlugins } from "../src/core/loader.js";
+import { loadPremiumPlugins } from "../src/core/premium.js";
 import { PathSandbox } from "../src/services/paths.js";
 import { SavingsLedger } from "../src/services/savings.js";
 import { Scanner } from "../src/services/scan.js";
@@ -1421,6 +1423,26 @@ async function main(): Promise<void> {
     } finally {
       if (prevGroups === undefined) delete process.env.EFFICIENT_TOKEN_GROUPS;
       else process.env.EFFICIENT_TOKEN_GROUPS = prevGroups;
+    }
+
+    // --- premium loader (open-core seam) --------------------------------
+    const prevPremium = process.env.EFFICIENT_TOKEN_PREMIUM;
+    try {
+      const premDir = await mkTmp("efficient-token-premium-");
+      const premFile = path.join(premDir, "premium.mjs");
+      await fsp.writeFile(premFile, 'export function premiumPlugins() {\n  return [{ name: "fake-premium", version: "0.0.0", tier: "premium", tools: [] }];\n}\n');
+      process.env.EFFICIENT_TOKEN_PREMIUM = pathToFileURL(premFile).href;
+      const discovered = await loadPremiumPlugins(log);
+      check("premium loader discovers an installed premium package", discovered.length === 1 && discovered[0]?.name === "fake-premium" && discovered[0]?.tier === "premium");
+      const regPrem: string[] = [];
+      await loadPlugins({ registerTool: (n: string) => regPrem.push(n) } as never, ctx, discovered);
+      check("premium plugin stays dark under the free entitlement", regPrem.length === 0);
+
+      process.env.EFFICIENT_TOKEN_PREMIUM = "efficient-token-premium-definitely-not-installed-xyz";
+      check("premium loader is empty (no throw) when no premium package is installed", (await loadPremiumPlugins(log)).length === 0);
+    } finally {
+      if (prevPremium === undefined) delete process.env.EFFICIENT_TOKEN_PREMIUM;
+      else process.env.EFFICIENT_TOKEN_PREMIUM = prevPremium;
     }
   } finally {
     await fsp.rm(root, { recursive: true, force: true });
