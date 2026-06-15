@@ -32,7 +32,7 @@ export function commitLogPlugin(): Plugin {
           path: z.string().optional().describe("Only commits touching this path (relative)."),
           ref: z.string().optional().describe('Branch/commit/range (e.g. "main", "main..HEAD"). Default: current HEAD.'),
           limit: z.number().int().positive().optional().describe(`Max commits (default ${DEFAULT_LIMIT}, capped at ${MAX_LIMIT}).`),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

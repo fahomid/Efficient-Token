@@ -42,7 +42,9 @@ export function codeOutlinePlugin(): Plugin {
                 `${rel} — no symbols found; use code_read to read its contents.`,
               );
             }
-            return ok(renderOutline(rel, symbols));
+            const out = renderOutline(rel, symbols);
+            ctx.savings.record("outline", content.length, out.length);
+            return ok(out);
           } catch (err) {
             return fail(`code_outline failed: ${errMessage(err)}`);
           }

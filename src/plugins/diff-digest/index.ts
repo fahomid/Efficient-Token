@@ -31,7 +31,7 @@ export function diffDigestPlugin(): Plugin {
           path: z.string().optional().describe("Limit the diff to this path (relative to the workspace)."),
           outputMode: z.enum(["digest", "stat", "files"]).optional().describe('"digest" hunks (default) | "stat" summary | "files" name-status list.'),
           context: z.number().int().min(0).optional().describe("Hunk context lines (default 3)."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

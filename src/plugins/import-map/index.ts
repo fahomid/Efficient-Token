@@ -34,7 +34,7 @@ export function importMapPlugin(): Plugin {
         inputSchema: {
           path: z.string().describe("File path relative to the workspace root."),
           direction: z.enum(["both", "imports", "importers"]).optional().describe('"both" (default) | "imports" (deps) | "importers" (dependents).'),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

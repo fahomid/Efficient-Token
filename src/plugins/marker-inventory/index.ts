@@ -37,7 +37,7 @@ export function markerInventoryPlugin(): Plugin {
           glob: z.string().optional().describe("Only files matching this glob."),
           type: z.string().optional().describe('Only this file type, e.g. "ts".'),
           headLimit: z.number().int().positive().optional().describe(`Max markers to return (default ${DEFAULT_HEAD}).`),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

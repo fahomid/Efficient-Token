@@ -28,7 +28,7 @@ export function jsonQueryPlugin(): Plugin {
         inputSchema: {
           path: z.string().describe("Path to a JSON file (relative to the workspace root)."),
           query: z.string().optional().describe('Dotted/bracket path, e.g. "scripts.build" or "a.b[0].c". Omit for a top-level overview.'),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

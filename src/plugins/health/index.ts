@@ -16,17 +16,21 @@ export function healthPlugin(): Plugin {
         name: "health",
         title: "Server health",
         description:
-          "Report efficient-token status: entitlement tier, workspace root, and limits. Use to confirm the server is connected and pointed at the right project before using other tools.",
+          "Report efficient-token status: tier, workspace root, limits, and the estimated tokens saved this session by distilled reads. Use to confirm the server is connected and pointed at the right project.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {},
         handler: async () => {
           try {
+            const s = ctx.savings.report();
+            const byKind = Object.entries(s.byKind).map(([k, v]) => `${k} ${v.savedTokens}t/${v.calls}`).join(", ");
             const lines = [
               "efficient-token: ok",
               `tier: ${ctx.license.tier}`,
               `root: ${ctx.config.root}`,
               `maxReadTokens: ${ctx.config.maxReadTokens}`,
               `maxFileBytes: ${ctx.config.maxFileBytes}`,
+              `savings (this session, estimate): ~${s.savedTokens} tokens over ${s.calls} distilled read(s) ` +
+                `(returned ~${s.returnedTokens} vs ~${s.baselineTokens} whole-file)${byKind ? ` [${byKind}]` : ""}`,
             ];
             return ok(lines.join("\n"));
           } catch (err) {

@@ -51,7 +51,7 @@ claude mcp add --transport stdio efficient-token -- npx tsx /abs/path/efficient-
 
 | Tool | Use it to… |
 | --- | --- |
-| `health` | Confirm the server is connected and see tier / workspace / limits. *(read-only)* |
+| `health` | Confirm the server is connected and see tier / workspace / limits, **plus the estimated tokens saved this session** by distilled reads (exact baseline: whole-file size vs what was returned). *(read-only)* |
 | `code_outline` | List a file's symbols (functions, classes, methods, types) with line ranges and signatures — not the source. *(read-only)* |
 | `code_read` | Claude's **`Read`** (same `file_path`/`offset`/`limit`, cat-n output) but minimal: also extract one **symbol**, and a whole-file read **degrades to an outline + head** over budget instead of dumping it. *(read-only)* |
 | `glob` | List file **paths** matching a glob/type (no content), like Claude's `Glob` (same `pattern`/`path`) — find files without reading directories. Sorted **deterministically by name** (reproducible) rather than by mtime. *(read-only)* |

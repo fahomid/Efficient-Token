@@ -15,6 +15,7 @@ import { SafeFs } from "./services/fs.js";
 import { createEntitlement } from "./services/license.js";
 import { createLogger } from "./services/logger.js";
 import { PathSandbox } from "./services/paths.js";
+import { SavingsLedger } from "./services/savings.js";
 import { Scanner } from "./services/scan.js";
 
 import { codeEditPlugin } from "./plugins/code-edit/index.js";
@@ -130,6 +131,7 @@ async function main(): Promise<void> {
     scan: new Scanner(paths),
     budget: new TokenBudgeter(),
     license: createEntitlement(),
+    savings: new SavingsLedger(),
     log,
   };
 

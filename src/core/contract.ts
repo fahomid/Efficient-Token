@@ -13,6 +13,7 @@ import type { AstService } from "../services/ast.js";
 import type { TokenBudgeter } from "../services/budget.js";
 import type { Entitlement } from "../services/license.js";
 import type { Logger } from "../services/logger.js";
+import type { SavingsLedger } from "../services/savings.js";
 import type { Scanner } from "../services/scan.js";
 
 export type Tier = "free" | "premium";
@@ -63,6 +64,7 @@ export interface CoreContext {
   scan: Scanner;
   budget: TokenBudgeter;
   license: Entitlement;
+  savings: SavingsLedger;
   log: Logger;
 }
 

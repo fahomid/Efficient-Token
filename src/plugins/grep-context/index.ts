@@ -39,7 +39,7 @@ export function grepContextPlugin(): Plugin {
           glob: z.string().optional().describe('Only search files matching this glob.'),
           type: z.string().optional().describe('Only search this file type, e.g. "ts".'),
           caseInsensitive: z.boolean().optional().describe("Case-insensitive match."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
           headLimit: z.number().int().positive().optional().describe(`Max blocks shown (default ${DEFAULT_HEAD}).`),
         },
         handler: async (args) => {

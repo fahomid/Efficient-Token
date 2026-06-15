@@ -23,6 +23,7 @@ import { createEntitlement } from "../src/services/license.js";
 import { createLogger } from "../src/services/logger.js";
 import { loadPlugins } from "../src/core/loader.js";
 import { PathSandbox } from "../src/services/paths.js";
+import { SavingsLedger } from "../src/services/savings.js";
 import { Scanner } from "../src/services/scan.js";
 import { codeEditPlugin } from "../src/plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
@@ -146,6 +147,7 @@ async function main(): Promise<void> {
       scan: new Scanner(paths),
       budget: new TokenBudgeter(),
       license: createEntitlement(),
+      savings: new SavingsLedger(),
       log,
     };
     await ctx.ast.init();
@@ -1341,6 +1343,14 @@ async function main(): Promise<void> {
     } finally {
       await fsp.rm(checkRoot, { recursive: true, force: true });
     }
+
+    // --- savings ledger -------------------------------------------------
+    const sav = ctx.savings.report();
+    check("savings ledger accrued from distilled reads",
+      sav.calls > 0 && sav.savedTokens > 0 && sav.returnedTokens <= sav.baselineTokens, JSON.stringify(sav));
+    const healthPl = healthPlugin();
+    await healthPl.init?.(ctx);
+    check("health reports session savings", textOf(await tool(healthPl, "health").handler({})).includes("savings (this session"));
 
     // --- loader group gate ----------------------------------------------
     const reg1: string[] = [];

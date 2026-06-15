@@ -35,7 +35,7 @@ export function outlineDiffPlugin(): Plugin {
           ref: z.string().describe('Base revision (branch/commit/tag, e.g. "main", "v1.0").'),
           to: z.string().optional().describe("Target revision (default: the working tree)."),
           path: z.string().optional().describe("Limit to this path (relative)."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

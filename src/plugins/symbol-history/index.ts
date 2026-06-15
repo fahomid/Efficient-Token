@@ -34,7 +34,7 @@ export function symbolHistoryPlugin(): Plugin {
           endLine: z.number().int().positive().optional().describe("1-based span end (with startLine)."),
           mode: z.enum(["list", "hunks"]).optional().describe('"list" commits (default) | "hunks" per-revision diff.'),
           ref: z.string().optional().describe("Limit history to commits reachable from this ref (e.g. a branch)."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

@@ -36,7 +36,7 @@ export function lineBlamePlugin(): Plugin {
           symbol: z.string().optional().describe("Blame just this symbol's span (alternative to startLine/endLine)."),
           startLine: z.number().int().positive().optional().describe("1-based span start."),
           endLine: z.number().int().positive().optional().describe("1-based span end."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

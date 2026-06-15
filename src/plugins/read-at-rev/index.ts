@@ -33,7 +33,7 @@ export function readAtRevPlugin(): Plugin {
           symbol: z.string().optional().describe("A single symbol to extract from that revision."),
           startLine: z.number().int().positive().optional().describe("1-based range start."),
           endLine: z.number().int().positive().optional().describe("1-based range end."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

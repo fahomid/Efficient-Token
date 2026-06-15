@@ -25,7 +25,7 @@ export function codeReadPlugin(): Plugin {
           offset: z.number().int().positive().optional().describe("1-based line to start reading from (like Read)."),
           limit: z.number().int().positive().optional().describe("Number of lines to read from offset (like Read)."),
           symbol: z.string().optional().describe("Extract a single symbol (function/class/method/type) by name — a superset of Read."),
-          maxTokens: z.number().int().positive().optional().describe("Override the whole-file token budget before it degrades."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget (before a whole-file read degrades)."),
         },
         handler: async (args) => {
           const offset = args.offset === undefined ? undefined : Number(args.offset);

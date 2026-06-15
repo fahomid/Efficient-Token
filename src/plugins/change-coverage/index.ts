@@ -36,7 +36,7 @@ export function changeCoveragePlugin(): Plugin {
           ref: z.string().optional().describe('Compare against this branch/commit/range (default: working tree vs HEAD).'),
           path: z.string().optional().describe("Limit to this path (relative)."),
           artifact: z.string().optional().describe("Path to an lcov.info file (default: coverage/lcov.info or lcov.info)."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

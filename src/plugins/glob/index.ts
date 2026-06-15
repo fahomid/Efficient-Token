@@ -34,7 +34,7 @@ export function globPlugin(): Plugin {
           path: z.string().optional().describe("Directory to scope to (relative). Default: whole workspace."),
           type: z.string().optional().describe('Only this file type, e.g. "ts", "py".'),
           headLimit: z.number().int().positive().optional().describe(`Max paths to return (default ${DEFAULT_HEAD}, capped at ${MAX_HEAD}).`),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

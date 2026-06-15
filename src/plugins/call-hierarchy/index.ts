@@ -36,7 +36,7 @@ export function callHierarchyPlugin(): Plugin {
           path: z.string().optional().describe("File the symbol is defined in / scope to (relative)."),
           type: z.string().optional().describe('Only this file type, e.g. "ts".'),
           headLimit: z.number().int().positive().optional().describe(`Max callers + callees to list (default ${DEFAULT_HEAD}).`),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

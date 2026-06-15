@@ -34,7 +34,7 @@ export function reviewBranchPlugin(): Plugin {
           ref: z.string().optional().describe('Compare against this branch/commit/range (e.g. "main", "main...HEAD"). Default: working tree vs HEAD.'),
           staged: z.boolean().optional().describe("Review the staged index instead of the working tree."),
           path: z.string().optional().describe("Limit to this path (relative)."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

@@ -45,7 +45,7 @@ export function codeContextPlugin(): Plugin {
           path: z.string().optional().describe("Prefer the definition in this file (and scope the search)."),
           glob: z.string().optional().describe("Only consider files matching this glob."),
           type: z.string().optional().describe('Only consider this file type, e.g. "ts".'),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

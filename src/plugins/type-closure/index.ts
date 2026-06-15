@@ -39,7 +39,7 @@ export function typeClosurePlugin(): Plugin {
           path: z.string().optional().describe("Directory/file to scope the search to (relative)."),
           type: z.string().optional().describe('Only this file type, e.g. "ts".'),
           maxDepth: z.number().int().min(1).optional().describe(`Transitive depth (default ${DEFAULT_DEPTH}).`),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

@@ -45,7 +45,7 @@ export function designTokensPlugin(): Plugin {
         inputSchema: {
           paths: z.array(z.string()).optional().describe("Files to read (.css / token .json). Omit to auto-discover."),
           category: z.enum(["color", "size", "font", "all"]).optional().describe('Limit to a kind (default "all").'),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

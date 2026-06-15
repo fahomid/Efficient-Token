@@ -38,7 +38,7 @@ export function tokenUsagePlugin(): Plugin {
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           paths: z.array(z.string()).optional().describe("Stylesheets to scan. Omit to auto-discover .css/.scss/.less."),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {

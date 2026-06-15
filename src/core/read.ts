@@ -60,11 +60,16 @@ export interface RenderReadArgs {
  */
 export async function renderRead(ctx: CoreContext, a: RenderReadArgs): Promise<ToolResult> {
   const lines = splitLines(a.content);
-  if (a.symbol !== undefined) return await readSymbol(ctx, a.filePath, a.content, lines, a.displayRel, a.symbol, a.maxTokens);
-  if (a.startLine !== undefined || a.endLine !== undefined) {
-    return readRange(lines, a.displayRel, a.startLine, a.endLine, a.maxTokens);
+  let result: ToolResult;
+  if (a.symbol !== undefined) result = await readSymbol(ctx, a.filePath, a.content, lines, a.displayRel, a.symbol, a.maxTokens);
+  else if (a.startLine !== undefined || a.endLine !== undefined) result = readRange(lines, a.displayRel, a.startLine, a.endLine, a.maxTokens);
+  else result = await readWhole(ctx, a.filePath, a.content, lines, a.displayRel, a.maxTokens);
+  // Ledger: baseline = whole file (what Read would return), returned = what we did.
+  if (!result.isError) {
+    const returned = result.content.reduce((n, c) => n + (c.type === "text" ? c.text.length : 0), 0);
+    ctx.savings.record("read", a.content.length, returned);
   }
-  return await readWhole(ctx, a.filePath, a.content, lines, a.displayRel, a.maxTokens);
+  return result;
 }
 
 async function readSymbol(

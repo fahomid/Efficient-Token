@@ -37,7 +37,7 @@ export function callSitesPlugin(): Plugin {
           glob: z.string().optional().describe("Only consider files matching this glob."),
           type: z.string().optional().describe('Only this file type, e.g. "ts", "py".'),
           headLimit: z.number().int().positive().optional().describe(`Max call sites to return (default ${DEFAULT_HEAD}).`),
-          maxTokens: z.number().int().positive().optional().describe("Bound output size (default: server read budget)."),
+          maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
           try {
