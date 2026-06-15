@@ -17,6 +17,12 @@ jobs:
   test:
     name: ${{ matrix.os }} / Node ${{ matrix.node }}
     runs-on: ${{ matrix.os }}
+    # Node 24 is non-blocking: the bundled web-tree-sitter (0.25) WASM runtime
+    # exhausts memory under Node 24's V8 when the smoke suite loads ~25 grammars
+    # back to back. Real sessions load only a few grammars and are unaffected; the
+    # runtime fix (web-tree-sitter 0.26) is ABI-incompatible with the prebuilt
+    # tree-sitter-wasms grammars. Re-block once that chain supports Node 24.
+    continue-on-error: ${{ matrix.node == 24 }}
     strategy:
       fail-fast: false
       matrix:
