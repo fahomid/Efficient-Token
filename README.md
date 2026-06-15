@@ -4,6 +4,7 @@
 [![npm](https://img.shields.io/npm/v/efficient-token.svg)](https://www.npmjs.com/package/efficient-token)
 [![Node](https://img.shields.io/node/v/efficient-token.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/fahomid)
 
 A **local-first [MCP](https://modelcontextprotocol.io) server** that does
 deterministic code work on your machine and returns only distilled, **faithful**
@@ -341,6 +342,12 @@ changes. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
 - [`SECURITY.md`](./SECURITY.md) — the sandbox/security model and how to report a
   vulnerability privately.
 - [`CHANGELOG.md`](./CHANGELOG.md) — release history.
+
+## Support
+
+efficient-token is MIT-licensed and free. If it saves you tokens and you'd like to
+support its development, sponsorship is welcome and entirely optional —
+[github.com/sponsors/fahomid](https://github.com/sponsors/fahomid).
 
 ## License
 
