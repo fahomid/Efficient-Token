@@ -1357,7 +1357,7 @@ async function main(): Promise<void> {
       sav.calls > 0 && sav.savedTokens > 0 && sav.returnedTokens <= sav.baselineTokens, JSON.stringify(sav));
     const healthPl = healthPlugin();
     await healthPl.init?.(ctx);
-    check("health reports session savings", textOf(await tool(healthPl, "health").handler({})).includes("savings (this session"));
+    check("health reports session savings", textOf(await tool(healthPl, "health").handler({})).includes("savings this session"));
 
     // --- loader group gate ----------------------------------------------
     const reg1: string[] = [];

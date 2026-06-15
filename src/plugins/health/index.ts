@@ -23,14 +23,17 @@ export function healthPlugin(): Plugin {
           try {
             const s = ctx.savings.report();
             const byKind = Object.entries(s.byKind).map(([k, v]) => `${k} ${v.savedTokens}t/${v.calls}`).join(", ");
+            const pct = s.baselineTokens > 0 ? Math.round((s.savedTokens / s.baselineTokens) * 100) : 0;
             const lines = [
               "efficient-token: ok",
               `tier: ${ctx.license.tier}`,
               `root: ${ctx.config.root}`,
               `maxReadTokens: ${ctx.config.maxReadTokens}`,
               `maxFileBytes: ${ctx.config.maxFileBytes}`,
-              `savings (this session, estimate): ~${s.savedTokens} tokens over ${s.calls} distilled read(s) ` +
-                `(returned ~${s.returnedTokens} vs ~${s.baselineTokens} whole-file)${byKind ? ` [${byKind}]` : ""}`,
+              "savings this session (estimate):",
+              `  this server returned ~${s.returnedTokens} tokens across ${s.calls} distilled read(s)`,
+              `  equivalent built-in whole-file reads would have cost ~${s.baselineTokens} tokens`,
+              `  net saved ~${s.savedTokens} tokens (~${pct}%)${byKind ? ` [${byKind}]` : ""}`,
             ];
             return ok(lines.join("\n"));
           } catch (err) {
