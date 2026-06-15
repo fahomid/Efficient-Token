@@ -47,7 +47,9 @@ function resultText(res: unknown): string {
 }
 
 async function main(): Promise<void> {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-e2e-"));
+  // realpath so the temp root matches the server's canonicalized workspace root
+  // (the CI Windows runner's tmpdir has an 8.3 short component, e.g. RUNNER~1).
+  const root = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-e2e-")));
   await fsp.writeFile(path.join(root, "sample.ts"), SAMPLE_TS, "utf8");
   await fsp.writeFile(
     path.join(root, "pixel.png"),

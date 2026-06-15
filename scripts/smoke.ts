@@ -123,7 +123,9 @@ function textOf(res: ToolResult): string {
 }
 
 async function main(): Promise<void> {
-  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-smoke-"));
+  // realpath so the temp root matches what SafeFs realpath-checks against (the CI
+  // Windows runner's tmpdir has an 8.3 short component, e.g. RUNNER~1).
+  const root = await fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), "efficient-token-smoke-")));
   try {
     const samplePath = path.join(root, "sample.ts");
     await fsp.writeFile(samplePath, SAMPLE_TS, "utf8");

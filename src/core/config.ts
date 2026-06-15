@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import path from "node:path";
 
 /** Immutable runtime configuration, derived once from the environment. */
@@ -17,6 +18,21 @@ export interface Config {
   readonly groups?: ReadonlySet<string>;
 }
 
+/**
+ * Canonicalize a path: resolve 8.3 short names, symlinks, and drive-letter
+ * casing. SafeFs realpath-checks every target against the root, so a non-canonical
+ * root (a symlinked project dir, or a short-form temp dir such as the CI runner's
+ * RUNNER~1) would otherwise make in-root files look like they escape. Falls back
+ * to the input when the path does not exist yet.
+ */
+function canonicalize(p: string): string {
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
 /** Parse a positive integer env var, falling back on missing/invalid input. */
 function intFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -34,7 +50,7 @@ function intFromEnv(name: string, fallback: number): number {
  */
 export function loadConfig(): Config {
   const rawRoot = process.env.EFFICIENT_TOKEN_ROOT?.trim();
-  const root = rawRoot ? path.resolve(rawRoot) : process.cwd();
+  const root = canonicalize(rawRoot ? path.resolve(rawRoot) : process.cwd());
   const rawGroups = process.env.EFFICIENT_TOKEN_GROUPS?.trim();
   const parsedGroups = rawGroups
     ? new Set(rawGroups.split(",").map((g) => g.trim().toLowerCase()).filter(Boolean))
