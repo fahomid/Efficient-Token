@@ -407,6 +407,19 @@ async function main(): Promise<void> {
     await ce.handler({ file_path:"e/bom.ts", old_string:"const k = 1;", new_string:"const k = 2;" });
     check("code_edit preserves BOM via raw read", (await ctx.fs.readRaw("e/bom.ts")).content === `${BOM}const k = 2;\n`);
 
+    // code_edit tolerates a newline-style mismatch (Claude Edit parity): a
+    // multi-line LF anchor matches a CRLF-saved file, the file keeps its CRLF
+    // endings, and inserted lines are written CRLF too.
+    await ctx.fs.writeAtomic("e/crlf.dart", "import 'a.dart';\r\nimport 'b.dart';\r\nclass X {}\r\n");
+    const crlfEdit = await ce.handler({ file_path: "e/crlf.dart", old_string: "import 'a.dart';\nimport 'b.dart';", new_string: "import 'a.dart';\nimport 'c.dart';\nimport 'b.dart';" });
+    check("code_edit matches LF anchor against CRLF file (preserves+inserts CRLF)",
+      !crlfEdit.isError && (await ctx.fs.readRaw("e/crlf.dart")).content === "import 'a.dart';\r\nimport 'c.dart';\r\nimport 'b.dart';\r\nclass X {}\r\n", textOf(crlfEdit));
+    // Reverse: a CRLF anchor still matches an LF file, and LF is preserved.
+    await ctx.fs.writeAtomic("e/lf.dart", "import 'a.dart';\nimport 'b.dart';\nclass X {}\n");
+    const lfEdit = await ce.handler({ file_path: "e/lf.dart", old_string: "import 'a.dart';\r\nimport 'b.dart';", new_string: "import 'a.dart';\r\nimport 'z.dart';\r\nimport 'b.dart';" });
+    check("code_edit matches CRLF anchor against LF file (preserves LF)",
+      !lfEdit.isError && (await ctx.fs.readRaw("e/lf.dart")).content === "import 'a.dart';\nimport 'z.dart';\nimport 'b.dart';\nclass X {}\n", textOf(lfEdit));
+
     // --- syntax recovery guard (code_edit + code_write) -----------------
     const GOOD = "export function f() {\n  return 1;\n}\n";
     await ctx.fs.writeAtomic("syn/f.ts", GOOD);
@@ -499,6 +512,15 @@ async function main(): Promise<void> {
       { file_path: "ap/seq.ts", old_string:"= 1", new_string:"= 2" },
     ] });
     check("apply_patch sequential edits compound", !apSeq.isError && (await ctx.fs.read("ap/seq.ts")).content === "let x = 2;\n");
+
+    // apply_patch shares the matcher, so it is newline-tolerant too: an LF anchor
+    // matches a CRLF file and the file keeps its CRLF endings.
+    await ctx.fs.writeAtomic("ap/crlf.ts", "const a = 1;\r\nconst b = 2;\r\n");
+    const apCrlf = await ap.handler({ edits: [
+      { file_path: "ap/crlf.ts", old_string: "const a = 1;\nconst b = 2;", new_string: "const a = 1;\nconst z = 9;\nconst b = 2;" },
+    ] });
+    check("apply_patch matches LF anchor against CRLF file (preserves CRLF)",
+      !apCrlf.isError && (await ctx.fs.readRaw("ap/crlf.ts")).content === "const a = 1;\r\nconst z = 9;\r\nconst b = 2;\r\n", textOf(apCrlf));
 
     await ctx.fs.writeAtomic("ap/x.ts", "export const p = 1;\n");
     await ctx.fs.writeAtomic("ap/y.ts", "export const q = 2;\n");

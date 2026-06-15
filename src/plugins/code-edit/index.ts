@@ -77,7 +77,7 @@ export function codeEditPlugin(): Plugin {
 
             await ctx.fs.writeAtomic(p, newContent);
 
-            const preview = changedPreview(content, newContent, oldString, newString);
+            const preview = changedPreview(newContent, r.firstIndex, r.newText);
             return ok(`Edited ${rel}: ${r.count} replacement(s).\n${preview}`);
           } catch (err) {
             return fail(`code_edit failed: ${errMessage(err)}`);
@@ -89,15 +89,9 @@ export function codeEditPlugin(): Plugin {
 }
 
 /** Line-numbered window around the first change so the model can verify it. */
-function changedPreview(
-  oldContent: string,
-  newContent: string,
-  oldString: string,
-  newString: string,
-): string {
-  const at = oldContent.indexOf(oldString);
+function changedPreview(newContent: string, at: number, newText: string): string {
   const startLine = newlineCount(newContent.slice(0, at)) + 1;
-  const changedLines = Math.max(1, splitLines(newString).length);
+  const changedLines = Math.max(1, splitLines(newText).length);
   const lines = splitLines(newContent);
   const from = Math.max(1, startLine - 2);
   const to = Math.min(lines.length, startLine + changedLines + 1);
