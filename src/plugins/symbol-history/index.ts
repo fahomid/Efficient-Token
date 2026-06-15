@@ -25,7 +25,7 @@ export function symbolHistoryPlugin(): Plugin {
         name: "symbol_history",
         title: "Symbol history",
         description:
-          "History of a single symbol (or line range) via git log -L — not the whole file's log. Pass path + symbol (mapped to its line span via the AST) or path + startLine/endLine. mode: list (default — commits that touched it: sha date author subject) | hunks (verbatim per-revision diff of just that span). Optional ref limits how far back. Use this to trace how one function evolved without per-commit file dumps. Read-only git.",
+          "History of a single symbol (or line range) via git log -L — not the whole file's log. Pass path + symbol (mapped to its span via the AST) or path + startLine/endLine. mode: list (default — commits: sha date author subject) | hunks (per-revision diff of that span). Optional ref limits how far back. Read-only git.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           path: z.string().describe("File path relative to the workspace root."),

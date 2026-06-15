@@ -42,7 +42,7 @@ export function moveSymbolPlugin(): Plugin {
         name: "move_symbol",
         title: "Move a symbol",
         description:
-          "Move a definition (function/class/type/const) from one file to another in ONE atomic call, and rewrite the NAMED imports/re-exports of it across the workspace to the new path (and import it back into the source file if it's still used). dryRun=true previews the plan without writing. Syntax-guarded, all-or-nothing. Default/namespace imports and the moved code's own dependencies are reported for you to handle (not guessed). JS/TS.",
+          "Move a definition (function/class/type/const) between files in ONE atomic call, rewriting the NAMED imports/re-exports of it across the workspace (and importing it back into the source if still used). dryRun previews; all-or-nothing, syntax-guarded. Default/namespace imports and the moved code's own deps are reported, not guessed. JS/TS.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("Name of the symbol to move."),

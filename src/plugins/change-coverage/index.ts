@@ -30,7 +30,7 @@ export function changeCoveragePlugin(): Plugin {
         name: "change_coverage",
         title: "Change coverage",
         description:
-          "Show which of your CHANGED lines are covered vs uncovered by tests, by intersecting the git diff with an lcov coverage artifact (coverage/lcov.info by default) — instead of reading a huge coverage report and computing it by hand. Lists uncovered changed lines as file:line + enclosing symbol. Pass ref/path to scope, or artifact for a non-default lcov path. Read-only. NOTE: line numbers align only if the artifact was generated against the current tree.",
+          "Show which CHANGED lines are covered vs uncovered by tests, intersecting the git diff with an lcov artifact (coverage/lcov.info) — instead of reading a huge coverage report by hand. Uncovered changed lines as file:line + enclosing symbol. ref/path/artifact to scope. Read-only. NOTE: line numbers align only if the artifact matches the current tree.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           ref: z.string().optional().describe('Compare against this branch/commit/range (default: working tree vs HEAD).'),

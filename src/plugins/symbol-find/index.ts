@@ -28,7 +28,7 @@ export function symbolFindPlugin(): Plugin {
         name: "symbol_find",
         title: "Find a symbol definition",
         description:
-          "Find where symbols are DEFINED across the workspace by name — exact, or substring=true for fuzzy recall (\"the function with 'auth' in its name\"). Returns file:line + kind + signature for each definition, optionally filtered by kind. Use this to jump to a definition you half-remember, instead of grepping. Read-only.",
+          "Find where symbols are DEFINED by name — exact, or substring=true for fuzzy recall. Returns file:line + kind + signature per definition, optional kind filter. Jump to a definition you half-remember instead of grepping. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           name: z.string().min(1).describe("Symbol name (or substring with substring=true)."),

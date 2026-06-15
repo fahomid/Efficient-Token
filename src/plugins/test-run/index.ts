@@ -34,7 +34,7 @@ export function testRunPlugin(): Plugin {
         name: "test_run",
         title: "Run a test",
         description:
-          "Run a focused test by forwarding a filter to a package.json test script (e.g. `npm run test -- <filter>`) — returns PASS, or a bounded failure tail plus the failing source (file:line + enclosing symbol). Cheaper than running the whole suite. Only package.json scripts run; filter must be plain (names/paths, no shell metacharacters). The script must accept a `-- <filter>` (e.g. vitest/jest/mocha). Executes.",
+          "Run a focused test by forwarding a filter to a package.json test script (`npm run test -- <filter>`) — returns PASS or a bounded failure tail + failing source (file:line + enclosing symbol). Cheaper than the whole suite. Only package.json scripts; filter must be plain (no shell metacharacters, no leading '-'). Script must accept `-- <filter>` (vitest/jest/mocha). Executes.",
         annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: true },
         inputSchema: {
           script: z.string().min(1).describe('The package.json test script to run (e.g. "test").'),

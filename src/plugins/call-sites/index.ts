@@ -29,7 +29,7 @@ export function callSitesPlugin(): Plugin {
         name: "call_sites",
         title: "Find call sites",
         description:
-          "Find where a function/method is actually CALLED (AST callee of a call/invocation) across the workspace — not raw text matches. Distinct from find_references (which also counts imports, type uses, comments) and code_search (raw regex). Each hit: file:line + enclosing symbol + the call line. Supported: TS/JS, Python, Go, Rust, Java, C/C++, Ruby. Scope with path/glob/type. Read-only.",
+          "Find where a function/method is actually CALLED (AST callee), not text matches. Distinct from find_references (counts imports/types/comments) and code_search (raw regex). Each hit: file:line + enclosing symbol + the call line. TS/JS, Python, Go, Rust, Java, C/C++, Ruby. Scope with path/glob/type. Read-only.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           symbol: z.string().min(1).describe("The function/method name being called."),

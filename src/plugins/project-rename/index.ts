@@ -36,7 +36,7 @@ export function projectRenamePlugin(): Plugin {
         name: "project_rename",
         title: "Rename across the project",
         description:
-          "Rename an identifier across the workspace in ONE atomic call (identifier-boundary replacement), instead of find_references + editing each file. Syntax-guarded per file; pass dryRun=true to preview counts without writing. NOTE: textual (not scope-aware) — it renames EVERY identifier with that name, so scope with path/glob/type and preview first. Mutating.",
+          "Rename an identifier across the workspace in ONE atomic call (identifier-boundary), instead of find_references + editing each file. dryRun previews counts; syntax-guarded. NOTE: textual (not scope-aware) — renames EVERY identifier with that name, so scope with path/glob/type and preview first. Mutating.",
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
         inputSchema: {
           oldName: z.string().min(1).describe("Existing identifier to rename."),

@@ -27,7 +27,7 @@ export function replaceSymbolPlugin(): Plugin {
         name: "replace_symbol",
         title: "Replace a symbol",
         description:
-          "Replace a whole function/class/method definition by NAME — pass newSource (the complete new definition) instead of pasting the old body as a match anchor (which code_edit requires). Saves re-sending the existing body on every whole-symbol rewrite. Resolves the symbol's span via the AST; refuses ambiguous names (pass container or occurrence to disambiguate). Same syntax-recovery guard as code_edit (validate=false to override). Atomic write. Use code_edit for sub-symbol or partial edits.",
+          "Replace a whole function/class/method definition by NAME — pass newSource (the full new definition) instead of pasting the old body as a match anchor like code_edit needs. Refuses ambiguous names (pass container/occurrence). Same syntax guard as code_edit (validate=false to override); atomic. Use code_edit for partial edits.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
