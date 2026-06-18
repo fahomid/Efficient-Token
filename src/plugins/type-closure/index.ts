@@ -22,7 +22,7 @@ export function typeClosurePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "type-closure",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     init(c) {
       ctx = c;

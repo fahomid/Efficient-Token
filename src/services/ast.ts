@@ -512,9 +512,12 @@ export class AstService {
   ): Promise<T | undefined> {
     const lang = await this.grammarFor(filePath);
     if (!lang) return undefined;
-    const parser = new Parser();
+    // Construct inside the try too: if an earlier trap left the shared WASM heap
+    // corrupted, even `new Parser()` / setLanguage can throw — degrade, don't escape.
+    let parser: Parser | null = null;
     let tree: ReturnType<Parser["parse"]> = null;
     try {
+      parser = new Parser();
       parser.setLanguage(lang);
       tree = parser.parse(code);
       if (tree === null) {
@@ -528,8 +531,21 @@ export class AstService {
       return undefined;
     } finally {
       // Free WASM memory now that everything is extracted into plain objects.
-      tree?.delete();
-      parser.delete();
+      // A parse that trapped (e.g. "memory access out of bounds") can leave the
+      // instance so corrupted that delete() itself throws; a throw here would
+      // escape the catch above and surface as a tool error, defeating the
+      // graceful degrade. Swallow cleanup failures (logged) so the worst case is
+      // skipped validation, never a failed edit.
+      try {
+        tree?.delete();
+      } catch (err) {
+        this.log.warn(`tree.delete() failed for ${filePath}`, err);
+      }
+      try {
+        parser?.delete();
+      } catch (err) {
+        this.log.warn(`parser.delete() failed for ${filePath}`, err);
+      }
     }
   }
 

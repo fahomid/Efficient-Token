@@ -468,12 +468,12 @@ creates the GitHub Release. To cut a release:
    handles the constants:
 
    ```bash
-   # Linux (GNU sed): bump 1.0.2 -> 1.0.3 across src + package.json
-   grep -rl '1\.0\.2' src package.json | xargs sed -i 's/1\.0\.2/1.0.3/g'
+   # Linux (GNU sed): bump 1.0.3 -> 1.0.4 across src + package.json
+   grep -rl '1\.0\.3' src package.json | xargs sed -i 's/1\.0\.3/1.0.4/g'
    ```
    ```powershell
    # Windows PowerShell
-   $old = '1.0.2'; $new = '1.0.3'
+   $old = '1.0.3'; $new = '1.0.4'
    @(Get-ChildItem -Recurse src -Filter *.ts) + (Get-Item package.json) |
      ForEach-Object { (Get-Content $_.FullName -Raw).Replace($old, $new) |
        Set-Content -NoNewline $_.FullName }
@@ -486,8 +486,8 @@ creates the GitHub Release. To cut a release:
 3. **Commit, then tag and push:**
 
    ```bash
-   git commit -am "chore(release): 1.0.3"
-   git tag -a v1.0.3 -m "efficient-token v1.0.3"
+   git commit -am "chore(release): 1.0.4"
+   git tag -a v1.0.4 -m "efficient-token v1.0.4"
    git push origin main --follow-tags
    ```
 

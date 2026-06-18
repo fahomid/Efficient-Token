@@ -4,6 +4,34 @@ All notable changes to **efficient-token** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-06-18
+
+A robustness release: best-effort steps (pre-write syntax validation, process
+cleanup, output trimming) can no longer fail a tool or crash the server, and
+degrade faithfully instead.
+
+### Fixed
+- **Edits no longer fail on a parser trap.** `code_edit` and `apply_patch` run a
+  best-effort syntax check before writing. On some inputs the tree-sitter (WASM)
+  parser traps with "memory access out of bounds"; freeing the parser afterwards
+  then threw the same trap, which escaped the caught path and failed the edit.
+  Parser construction and cleanup are now isolated, so a trap degrades to skipped
+  validation — the edit still applies.
+- **A timed-out script can no longer crash the server (Windows).** Killing a
+  timed-out process tree spawned `taskkill` with no error listener; if that spawn
+  failed asynchronously (binary not found, or resource pressure), the stray error
+  became uncaught and tore down the server and its connection. The kill is now
+  fully best-effort: the worst case is a leaked child, not a crash.
+- **A failing script always shows its error.** When a failing script's output was
+  a single line longer than the token budget, `code_check` / `check_locate` /
+  `test_run` returned an empty report; they now return a faithful tail of that
+  line.
+
+### Changed
+- The server installs last-resort handlers so an unexpected stray error is logged
+  to stderr and the server keeps serving, rather than dropping the stdio
+  connection.
+
 ## [1.0.2] - 2026-06-15
 
 A bug-fix release: edits now tolerate CRLF/LF newline differences, with a
@@ -89,5 +117,6 @@ work, running checks, and editing.
   real-stdio `npm run e2e`; CI runs on Ubuntu and Windows across Node 18, 20, 22,
   and 24.
 
+[1.0.3]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.2
 [1.0.1]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.1

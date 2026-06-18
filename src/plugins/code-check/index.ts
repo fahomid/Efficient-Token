@@ -21,7 +21,7 @@ export function codeCheckPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-check",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     init(c) {
       ctx = c;

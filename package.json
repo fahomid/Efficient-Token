@@ -1,6 +1,6 @@
 {
   "name": "efficient-token",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Local-first MCP server that returns distilled, faithful code context to cut LLM token usage without degrading reasoning.",
   "keywords": [
     "mcp",

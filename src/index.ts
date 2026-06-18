@@ -68,7 +68,7 @@ import { viewImagePlugin } from "./plugins/view-image/index.js";
 import { traceLocatePlugin } from "./plugins/trace-locate/index.js";
 import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 
 /**
  * The only place features are wired together. Premium and grouped plugins can be
@@ -125,6 +125,15 @@ export const plugins: Plugin[] = [
 
 async function main(): Promise<void> {
   const log = createLogger();
+
+  // Last-resort guards. Every tool handler wraps its work in try/catch and returns
+  // a fail() envelope, and the SDK catches tool-call rejections, so anything that
+  // reaches here is an unexpected stray — e.g. an async event from a best-effort
+  // child process. Log it to stderr (never stdout) and keep serving rather than
+  // crashing and disconnecting the stdio transport.
+  process.on("uncaughtException", (err) => log.error("uncaughtException (server kept alive)", err));
+  process.on("unhandledRejection", (reason) => log.error("unhandledRejection (server kept alive)", reason));
+
   const config = loadConfig();
   const paths = new PathSandbox(config.root);
 

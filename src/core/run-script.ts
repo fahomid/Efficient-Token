@@ -103,11 +103,20 @@ function collect(child: ReturnType<typeof spawn>, isWin: boolean, timeoutMs: num
   });
 }
 
-function killTree(pid: number | undefined, isWin: boolean): void {
+export function killTree(pid: number | undefined, isWin: boolean): void {
   if (pid === undefined) return;
   try {
     if (isWin) {
-      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+      // A failed spawn (taskkill missing on PATH, or EAGAIN/ENOMEM under the very
+      // resource pressure that made us kill the tree) is reported via an ASYNC
+      // "error" event, not a throw — so the try/catch here cannot see it. Without
+      // a listener that event becomes an uncaughtException and crashes the whole
+      // server, tearing down the transport. This kill is best-effort, so attach a
+      // listener and swallow it: the worst case is a leaked child, not a crash.
+      const tk = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+      tk.on("error", () => {
+        /* best-effort: could not launch taskkill; leave the child to the OS */
+      });
     } else {
       try {
         process.kill(-pid, "SIGKILL"); // kill the whole process group
@@ -134,6 +143,19 @@ export function boundedTail(text: string, maxTokens: number): string {
     if (used + line.length + 1 > budget) break;
     kept.push(line);
     used += line.length + 1;
+  }
+  if (kept.length === 0) {
+    // A single line alone exceeds the budget (a minified bundle error, a one-line
+    // JSON dump). Returning the line-tail here would yield "last 0 of N lines"
+    // with no payload — a failure report with no diagnostic. Keep a faithful
+    // character-level tail of that line instead. Nudge off a leading lone low
+    // surrogate so the cut can never split an astral char into an ill-formed half.
+    const last = lines[lines.length - 1]!;
+    let from = Math.max(0, last.length - budget);
+    const code = last.charCodeAt(from);
+    if (code >= 0xdc00 && code <= 0xdfff) from++;
+    const slice = last.slice(from);
+    return `[showing last ${slice.length} of ${last.length} chars of the last output line]\n${slice}`;
   }
   kept.reverse();
   return `[showing last ${kept.length} of ${lines.length} output lines]\n${kept.join("\n")}`;

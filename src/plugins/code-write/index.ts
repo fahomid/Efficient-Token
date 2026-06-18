@@ -14,7 +14,7 @@ export function codeWritePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-write",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     init(c) {
       ctx = c;

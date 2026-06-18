@@ -19,7 +19,7 @@ export function outlineDiffPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "outline-diff",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     init(c) {
       ctx = c;

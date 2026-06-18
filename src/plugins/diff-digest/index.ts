@@ -13,7 +13,7 @@ export function diffDigestPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "diff-digest",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     init(c) {
       ctx = c;

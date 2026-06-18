@@ -17,6 +17,7 @@ const execFileP = promisify(execFile);
 import { LANG_CASES } from "./langcases.js";
 
 import { loadConfig } from "../src/core/config.js";
+import { boundedTail, killTree } from "../src/core/run-script.js";
 import type { CoreContext, Plugin, ToolResult } from "../src/core/contract.js";
 import { splitLines, truncate } from "../src/core/text.js";
 import { AstService } from "../src/services/ast.js";
@@ -1297,6 +1298,46 @@ async function main(): Promise<void> {
     await ccNo.init?.(ctx);
     check("code_check needs package.json", (await tool(ccNo, "code_check").handler({ script: "test" })).isError === true);
 
+    // --- run-script utilities (boundedTail / killTree): degrade and best-effort
+    // cleanup must never drop all output or crash the process. ---
+    {
+      const huge = "x".repeat(100000);
+      const tail = boundedTail(huge, 6000); // budget 24000
+      check(
+        "boundedTail keeps a faithful tail of a single over-budget line",
+        tail.length > 1000 && !tail.includes("last 0 of") && /x{500,}/.test(tail),
+        `${tail.length} chars`,
+      );
+      const mixed = `ERROR: boom\nat foo.ts:1\n${"y".repeat(100000)}`;
+      const mt = boundedTail(mixed, 6000);
+      check(
+        "boundedTail keeps content when the last line is over budget",
+        mt.length > 1000 && !mt.includes("last 0 of") && /y{500,}/.test(mt),
+      );
+      check("boundedTail returns short output unchanged", boundedTail("line1\nline2\nline3", 6000) === "line1\nline2\nline3");
+      check("boundedTail reports empty output", boundedTail("   \n  ", 6000) === "(no output)");
+      // A long emoji line must produce a well-formed tail (no lone surrogate half).
+      const et = boundedTail("😀".repeat(20000), 1000);
+      const body = et.split("\n").slice(1).join("\n");
+      check(
+        "boundedTail tail is well-formed UTF-16 (no split surrogate)",
+        body.length > 0 && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(body),
+      );
+
+      // killTree is best-effort cleanup: a bogus pid must never throw or crash.
+      killTree(2147483646, process.platform === "win32");
+      // The hazard it guards: spawning a missing binary emits an ASYNC "error"
+      // event (not a throw); killTree must attach a listener so it can't become an
+      // uncaughtException. Confirm the event is emitted and catchable here.
+      const { spawn } = await import("node:child_process");
+      const caught = await new Promise<boolean>((res) => {
+        const c = spawn("efftoken_no_such_binary_xyz", ["/T", "/F"], { windowsHide: true });
+        c.on("error", () => res(true));
+        setTimeout(() => res(false), 2000);
+      });
+      check("killTree survived a bogus pid and missing-binary spawn emits a catchable async error", caught);
+    }
+
     const checkRoot = await mkTmp("efficient-token-check-");
     try {
       const pkg = {
@@ -1308,6 +1349,7 @@ async function main(): Promise<void> {
           sleep: 'node -e "setTimeout(() => {}, 30000)"',
           failloc: "node -e \"console.error('src.ts:2:21 - error TS2322: bad type'); process.exit(1)\"",
           longout: "node -e \"console.error('x.'.repeat(60000)); console.error('src.ts:3:1 - err'); process.exit(1)\"",
+          bigfail: "node -e \"process.stderr.write('E'.repeat(100000)); process.exit(1)\"",
           needsfilter: "node -e \"process.exit(process.argv[1] === 'wanted' ? 0 : 1)\"",
         },
       };
@@ -1329,6 +1371,12 @@ async function main(): Promise<void> {
       check("code_check pass is terse", !okRes.isError && textOf(okRes).includes("✓ ok: passed (exit 0") && !textOf(okRes).includes("boom"));
       const badRes = await cc.handler({ script: "bad" });
       check("code_check failure shows exit + output", !badRes.isError && textOf(badRes).includes("✗ bad: FAILED (exit ") && textOf(badRes).includes("boomtoken123"));
+      const bigRes = await cc.handler({ script: "bigfail" });
+      const bigText = textOf(bigRes);
+      check(
+        "code_check shows a real tail when a failure is one over-budget line",
+        !bigRes.isError && bigText.includes("✗ bigfail: FAILED") && /E{500,}/.test(bigText) && !bigText.includes("last 0 of"),
+      );
       const missing = await cc.handler({ script: "nope" });
       check("code_check missing script lists available", missing.isError === true && textOf(missing).includes("Available: ok, bad"));
       const unsafe = await cc.handler({ script: "a b; rm -rf /" });

@@ -17,7 +17,7 @@ export function fontInfoPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "font-info",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     group: "design",
     init(c) {

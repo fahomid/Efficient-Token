@@ -24,7 +24,7 @@ export function conflictDigestPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "conflict-digest",
-    version: "1.0.2",
+    version: "1.0.3",
     tier: "free",
     init(c) {
       ctx = c;
