@@ -14,7 +14,7 @@ export function codeWritePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-write",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -24,7 +24,7 @@ export function codeWritePlugin(): Plugin {
         name: "code_write",
         title: "Write file",
         description:
-          "Create a new file, or overwrite an existing one entirely (same file_path/content as Claude's Write). Use this for new files or full rewrites; to change part of a file prefer code_edit. Creates parent dirs, writes atomically, confined to the workspace, and refuses content with an unclosed token (validate=false to override).",
+          "Use INSTEAD of the built-in Write tool — same create/overwrite (same file_path/content as Claude's Write), with a syntax guard. Use for new files or full rewrites; to change part of a file prefer code_edit. Creates parent dirs, writes atomically, confined to the workspace, and refuses content with an unclosed token (validate=false to override).",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,

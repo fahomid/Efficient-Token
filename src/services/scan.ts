@@ -18,17 +18,23 @@ export interface ScanOptions {
   exts?: readonly string[];
   /** Stop after collecting this many files. */
   maxFiles?: number;
+  /** Skip files matching {@link ScanOptions.generatedGlobs} (counted in the result). */
+  skipGenerated?: boolean;
+  /** Generated-file globs to skip when {@link ScanOptions.skipGenerated} is set. */
+  generatedGlobs?: readonly string[];
 }
 
 export interface ScanResult {
   files: ScannedFile[];
   truncated: boolean;
+  /** How many files were skipped as generated (0 unless skipGenerated). */
+  skippedGenerated: number;
 }
 
 /** Directories never descended into (build output, VCS, editor, deps). */
 const IGNORED_DIRS: ReadonlySet<string> = new Set([
   "node_modules", ".git", ".hg", ".svn", "dist", "build", "out",
-  "coverage", ".next", ".nuxt", ".turbo", ".cache", ".idea", ".vscode",
+  "coverage", ".next", ".nuxt", ".turbo", ".cache", ".idea", ".vscode", ".claude",
 ]);
 
 /** Common `type` aliases (like ripgrep/Claude Grep) to file extensions. */
@@ -74,7 +80,11 @@ export class Scanner {
   constructor(private readonly paths: PathSandbox) {}
 
   async files(opts: ScanOptions = {}): Promise<ScanResult> {
-    const rootAbs = this.paths.resolve(opts.within ?? ".");
+    // A glob explicitly rooted at an ignored dir (e.g. "dist/**") is an explicit
+    // request for that dir, so scope the scan to it rather than pruning it — the
+    // ignore list still applies to dirs *nested* under the named root.
+    const within = opts.within ?? (opts.glob !== undefined ? explicitIgnoredRoot(opts.glob) : undefined);
+    const rootAbs = this.paths.resolve(within ?? ".");
     // Resolve the scan root through symlinks and re-assert containment, so a
     // symlinked `within` cannot redirect enumeration outside the workspace
     // (mirrors SafeFs.read; the walk itself never follows symlinks).
@@ -82,35 +92,38 @@ export class Scanner {
     try {
       realRoot = await fsp.realpath(rootAbs);
     } catch {
-      return { files: [], truncated: false }; // scope does not exist
+      return { files: [], truncated: false, skippedGenerated: 0 }; // scope does not exist
     }
-    this.paths.assertContained(realRoot, opts.within ?? ".");
+    this.paths.assertContained(realRoot, within ?? ".");
 
-    const exts = opts.exts ? new Set(opts.exts.map((e) => e.toLowerCase())) : undefined;
-    const match = opts.glob ? compileGlob(opts.glob) : undefined;
-    const max = opts.maxFiles ?? 5000;
+    const genMatch =
+      opts.skipGenerated && opts.generatedGlobs && opts.generatedGlobs.length > 0
+        ? buildGenMatch(opts.generatedGlobs)
+        : undefined;
+    const w: WalkState = {
+      scanRoot: realRoot,
+      exts: opts.exts ? new Set(opts.exts.map((e) => e.toLowerCase())) : undefined,
+      match: opts.glob ? compileGlob(opts.glob) : undefined,
+      genMatch,
+      max: opts.maxFiles ?? 5000,
+      out: [],
+      skipped: 0,
+    };
 
     const st = await statSafe(realRoot);
     if (st?.isFile()) {
       const rel = this.paths.relative(realRoot);
-      const files = include(rel, rel, exts, match) ? [{ abs: realRoot, rel }] : [];
-      return { files, truncated: false };
+      if (genMatch && genMatch(rel)) return { files: [], truncated: false, skippedGenerated: 1 };
+      const files = include(rel, rel, w.exts, w.match) ? [{ abs: realRoot, rel }] : [];
+      return { files, truncated: false, skippedGenerated: 0 };
     }
 
-    const out: ScannedFile[] = [];
-    const truncated = await this.walk(realRoot, realRoot, exts, match, max, out);
-    return { files: out, truncated };
+    const truncated = await this.walk(realRoot, w);
+    return { files: w.out, truncated, skippedGenerated: w.skipped };
   }
 
   /** Pre-order, name-sorted DFS. Returns true if the `max` cap was hit. */
-  private async walk(
-    dir: string,
-    scanRoot: string,
-    exts: Set<string> | undefined,
-    match: ((rel: string) => boolean) | undefined,
-    max: number,
-    out: ScannedFile[],
-  ): Promise<boolean> {
+  private async walk(dir: string, w: WalkState): Promise<boolean> {
     let entries: import("node:fs").Dirent[];
     try {
       entries = await fsp.readdir(dir, { withFileTypes: true });
@@ -119,19 +132,62 @@ export class Scanner {
     }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const e of entries) {
-      if (out.length >= max) return true;
+      if (w.out.length >= w.max) return true;
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) {
         if (IGNORED_DIRS.has(e.name)) continue;
-        if (await this.walk(abs, scanRoot, exts, match, max, out)) return true;
+        if (await this.walk(abs, w)) return true;
       } else if (e.isFile()) {
         const rel = this.paths.relative(abs);
-        const relWithin = toPosix(path.relative(scanRoot, abs));
-        if (include(rel, relWithin, exts, match)) out.push({ abs, rel });
+        if (w.genMatch && w.genMatch(rel)) {
+          w.skipped++;
+          continue;
+        }
+        const relWithin = toPosix(path.relative(w.scanRoot, abs));
+        if (include(rel, relWithin, w.exts, w.match)) w.out.push({ abs, rel });
       }
     }
-    return out.length >= max;
+    return w.out.length >= w.max;
   }
+}
+
+/** Mutable state threaded through the recursive walk. */
+interface WalkState {
+  scanRoot: string;
+  exts: Set<string> | undefined;
+  match: ((rel: string) => boolean) | undefined;
+  genMatch: ((rel: string) => boolean) | undefined;
+  max: number;
+  out: ScannedFile[];
+  skipped: number;
+}
+
+/**
+ * If a glob is explicitly rooted at an ignored dir (e.g. `dist/**`, `node_modules/x/*`),
+ * return its literal leading path so the walker can scope to (and descend into) that
+ * named dir instead of pruning it. Returns undefined when the leading segment is not
+ * an ignored dir or the glob starts with a wildcard.
+ */
+function explicitIgnoredRoot(glob: string): string | undefined {
+  const lit: string[] = [];
+  for (const seg of glob.split("/")) {
+    if (/[*?[\]{}]/.test(seg)) break; // stop at the first wildcard segment
+    lit.push(seg);
+  }
+  if (lit.length === 0 || !IGNORED_DIRS.has(lit[0]!)) return undefined;
+  return lit.join("/");
+}
+
+/** Build a predicate matching a rel path against any of the generated globs. */
+export function buildGenMatch(globs: readonly string[]): (rel: string) => boolean {
+  const matchers = globs.map((g) => {
+    try {
+      return compileGlob(g);
+    } catch {
+      return () => false;
+    }
+  });
+  return (rel: string) => matchers.some((m) => m(rel));
 }
 
 function include(

@@ -19,7 +19,7 @@ export function callSitesPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "call-sites",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -90,7 +90,7 @@ export function callSitesPlugin(): Plugin {
             if (!analyzable) {
               return ok(`No call-site analysis available for the scanned files (unsupported language for "${symbol}"). Try find_references.`);
             }
-            if (total === 0) return ok(`No call sites for "${symbol}" found.`);
+            if (total === 0) return ok(`No call sites for "${symbol}" found${scan.truncated ? " in the scanned files (scan truncated — narrow with path/type to search the rest)" : ""}.`);
             const shownCapped = capped || total > hits.length || scan.truncated;
             const note = shownCapped ? "\n[results bounded — narrow with path/type/glob or raise headLimit/maxTokens]" : "";
             return ok(`${total}${shownCapped ? "+" : ""} call site(s) of "${symbol}":\n${hits.join("\n")}${note}`);

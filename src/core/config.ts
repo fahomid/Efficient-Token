@@ -1,14 +1,19 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 
+import { DEFAULT_GENERATED_GLOBS } from "./generated.js";
+
 /** Immutable runtime configuration, derived once from the environment. */
 export interface Config {
   /** Absolute workspace root; all file access is confined here. */
   readonly root: string;
-  /** Max tokens for a whole-file read before it degrades to an outline. */
+  /** Max tokens for a whole-file read before it degrades to a first-page preview. */
   readonly maxReadTokens: number;
   /** Hard cap (bytes) on any file {@link SafeFs} will read. */
   readonly maxFileBytes: number;
+  /** Globs marking generated files (defaults + env extras); hidden by default
+   *  from search / repo map / diff unless a tool's includeGenerated is set. */
+  readonly generatedGlobs: readonly string[];
   /**
    * Tool bundles to register. `undefined` means all (no filtering). When set,
    * only plugins whose `group` is in this set load. This lets a project shed the
@@ -41,12 +46,19 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+/** Parse a comma-separated env var into a trimmed, non-empty list. */
+function listFromEnv(name: string): string[] {
+  const raw = process.env[name]?.trim();
+  return raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
 /**
  * Build config from the environment:
  * - `EFFICIENT_TOKEN_ROOT`              (default: cwd)
  * - `EFFICIENT_TOKEN_MAX_READ_TOKENS`   (default: 6000)
  * - `EFFICIENT_TOKEN_MAX_FILE_BYTES`    (default: 2_000_000)
  * - `EFFICIENT_TOKEN_GROUPS`            (default: all; comma-separated bundle names)
+ * - `EFFICIENT_TOKEN_GENERATED_GLOBS`   (extra generated-file globs, comma-separated)
  */
 export function loadConfig(): Config {
   const rawRoot = process.env.EFFICIENT_TOKEN_ROOT?.trim();
@@ -63,6 +75,7 @@ export function loadConfig(): Config {
     root,
     maxReadTokens: intFromEnv("EFFICIENT_TOKEN_MAX_READ_TOKENS", 6000),
     maxFileBytes: intFromEnv("EFFICIENT_TOKEN_MAX_FILE_BYTES", 2_000_000),
+    generatedGlobs: [...DEFAULT_GENERATED_GLOBS, ...listFromEnv("EFFICIENT_TOKEN_GENERATED_GLOBS")],
     ...(groups ? { groups } : {}),
   };
 }

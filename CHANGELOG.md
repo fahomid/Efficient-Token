@@ -4,6 +4,99 @@ All notable changes to **efficient-token** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-06-19
+
+A feature release: two new keyed-JSON tools, richer multi-target reads,
+generated-file awareness, a diff-scoped test runner, opt-in incremental reads, and
+a post-edit check on `apply_patch` — 47 tools total. All additive and backward
+compatible.
+
+### Added
+- **`json_set` / `json_get` — surgical keyed-JSON editing.** `json_set` inserts or
+  updates one top-level key of a JSON object in place: it replaces just that key's
+  value span (every other byte preserved — no reserializing a 10k-line bundle) or
+  appends it, and can set a sibling metadata key (default prefix `@`, the
+  localization/ARB convention) in the same call. It re-validates the file as JSON
+  before an atomic write, preserves a leading BOM and the file's line endings, and
+  targets the effective member when a key is duplicated. `json_get` returns one
+  key's value plus its sibling metadata in a single call. Generic over any large
+  keyed JSON (localization bundles, token maps, config).
+- **`read_many` multi-target reads.** A target may now name several `symbols` of one
+  file, or a symbol `withCallees` to also pull the same-file functions it directly
+  calls — collapsing outline → symbol → range round-trips into one call.
+- **Generated-file awareness.** `code_search`, `repo_map`, and `diff_digest` hide
+  machine-generated files by default — a built-in glob list (`*.min.js`, `*.g.dart`,
+  `**/generated/**`, …) plus the `@generated` leading-comment marker — and report
+  how many were hidden. `includeGenerated: true` shows them; extend the globs with
+  `EFFICIENT_TOKEN_GENERATED_GLOBS`.
+- **`test_run changed`.** Runs only the test files affected by the working-tree diff
+  (changed tests plus tests referencing a changed source), and reports the
+  selection so a pass never hides an un-run affected test.
+- **`code_read elideIfUnchanged`.** Opt-in incremental reads: a repeat read of a
+  target unchanged since earlier in the session returns a short "unchanged" marker
+  instead of the bytes (re-orienting in edit loops). Always re-fetchable by reading
+  again without the flag, and any content change returns the full source.
+- **`apply_patch check`.** Optionally runs an allowlisted package.json script after a
+  successful patch and appends its (failures-only) result, so the analyze step rides
+  on the edit instead of a separate call. A failing check never hides that the patch
+  applied.
+- **Token-efficient tool preference + opt-in enforcement.** The server now advertises
+  a preference for its drop-in tools over the host's built-ins, via the MCP
+  `instructions` and a replacement clause on each drop-in tool's description (always
+  on, influence-only). `efficient-token setup` / `uninstall` additionally install a
+  **fail-open, heartbeat-gated** Claude Code `PreToolUse` hook that redirects
+  read-only Bash drainers (`grep`/`rg`, `cat`/`head`/`tail`/`sed`, `find`/`ls`) to
+  `code_search` / `code_read` / `glob` while the server is running — and never blocks
+  anything when it is not (server down, hook error, or `EFFICIENT_TOKEN_ENFORCE=0`).
+  The setup is opt-in, backs up and idempotently deep-merges
+  `.claude/settings.local.json`, and uninstall removes exactly what it added.
+
+- **In-session health, no API call.** The server publishes a detailed status JSON on
+  its heartbeat. `efficient-token status` prints a full, health-style report —
+  up/down, server version, tier, root, limits, and the session savings breakdown —
+  with no model turn; `--line` gives a compact one-liner and `--json` the raw data.
+  **`efficient-token setup` now installs a Claude Code `statusLine`** (alongside the
+  enforcement hook) so this health shows in the session automatically — via a tiny
+  generated `.claude/hooks/efficient-token-status.mjs`, never replacing a status line
+  you set yourself. Use `--no-hook` for status-line-only, `--no-statusline` for
+  hook-only; `uninstall` removes both. The `health` tool now also reports the version.
+
+### Changed
+- The deterministic file scanner now skips `.claude/` (tooling config, including the
+  enforcement heartbeat and hooks), so it never appears in search or repo-map output.
+- The published package no longer ships source maps (`*.js.map` / `*.d.ts.map`),
+  roughly halving its size; `.d.ts` type declarations are still included.
+- **`code_read` over-budget degrade now matches the built-in `Read`.** A whole-file
+  read that exceeds the token budget returns the first page of real content with how
+  to continue (`offset=…`, or `code_outline` for a symbol map), instead of leading
+  with an outline. `read_at_rev` (which shares the render path) does the same.
+
+### Fixed
+- **`read_many` no longer reads the same target twice.** A symbol/range/file named
+  in more than one target — or named explicitly and again pulled in as a callee —
+  is now merged to a single read across the whole call, so its bytes aren't sent
+  (or counted against the budget) twice; the header notes how many were merged.
+- **Top-level CLI usage.** `efficient-token --help` / `--version` now print and
+  exit; an unknown argument prints usage and exits non-zero instead of silently
+  starting the stdio server.
+- **Consistent cap / scan-truncation disclosure across tools.** Many tools applied a
+  cap (head/top-N, the workspace-scan file limit, a token budget) or hit an empty
+  result without saying so, so a partial or empty answer could look complete. They
+  now disclose it the way `find_references`/`symbol_find` already did: `code_outline`
+  bounds a very large outline; `call_hierarchy`/`call_sites`/`code_context`/
+  `type_closure`/`marker_inventory`/`test_run` flag a truncated workspace scan;
+  `design_tokens`/`token_usage` flag capped or truncated discovery (and `design_tokens`
+  no longer drops JSON-array values); `trace_locate`/`check_locate`/`test_run` flag a
+  capped error/frame list and disclose a location whose line no longer exists; and
+  `review_branch`/`change_coverage`/`outline_diff` flag their diff caps and skipped
+  files.
+- **Native-parity fixes for the drop-in tools.** `code_search` multiline `content`
+  mode now returns the spanned matching lines (it previously found nothing while
+  `files`/`count` modes matched the same pattern); `code_read` reports end-of-file
+  for an offset past the last line instead of re-returning the last line; and
+  `glob`/`code_search`/`repo_map` honor a glob explicitly rooted at an otherwise-
+  ignored directory (e.g. `dist/**`) instead of returning an empty result.
+
 ## [1.0.3] - 2026-06-18
 
 A robustness release: best-effort steps (pre-write syntax validation, process
@@ -117,6 +210,7 @@ work, running checks, and editing.
   real-stdio `npm run e2e`; CI runs on Ubuntu and Windows across Node 18, 20, 22,
   and 24.
 
+[1.0.4]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.4
 [1.0.3]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.2
 [1.0.1]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.1

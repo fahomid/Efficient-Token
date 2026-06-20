@@ -26,16 +26,17 @@ export function parseChangedRanges(diff: string): Map<string, Array<[number, num
   return map;
 }
 
-/** Expand changed ranges to a set of individual new-side line numbers (capped). */
-export function changedLineSet(ranges: ReadonlyArray<[number, number]>, cap = 100_000): Set<number> {
+/** Expand changed ranges to a set of individual new-side line numbers, capped.
+ *  `capped` is true if the cap was hit (the set is then a partial prefix). */
+export function changedLineSet(ranges: ReadonlyArray<[number, number]>, cap = 100_000): { set: Set<number>; capped: boolean } {
   const set = new Set<number>();
   for (const [c, e] of ranges) {
     for (let L = c; L <= e; L++) {
       set.add(L);
-      if (set.size >= cap) return set;
+      if (set.size >= cap) return { set, capped: true };
     }
   }
-  return set;
+  return { set, capped: false };
 }
 
 /** The innermost outline symbol whose [startLine,endLine] contains `lineNo`. */

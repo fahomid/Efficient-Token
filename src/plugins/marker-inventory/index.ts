@@ -19,7 +19,7 @@ export function markerInventoryPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "marker-inventory",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -95,7 +95,7 @@ export function markerInventoryPlugin(): Plugin {
               if (capped && shown >= head) break outer;
             }
 
-            if (total === 0) return ok(`No markers (${tags.join(", ")}) found.`);
+            if (total === 0) return ok(`No markers (${tags.join(", ")}) found${scan.truncated ? " in the scanned files (scan truncated — narrow with path/type to search the rest)" : ""}.`);
 
             const sections: string[] = [];
             for (const t of tags) {

@@ -23,7 +23,7 @@ export function tokenUsagePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "token-usage",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     group: "design",
     init(c) {
@@ -43,9 +43,8 @@ export function tokenUsagePlugin(): Plugin {
         handler: async (args) => {
           try {
             const maxTokens = args.maxTokens === undefined ? ctx.config.maxReadTokens : Number(args.maxTokens);
-            const files = args.paths !== undefined
-              ? (args.paths as unknown[]).map(String)
-              : (await ctx.scan.files({ exts: ["css", "scss", "less"], maxFiles: MAX_SCAN_FILES })).files.map((f) => f.rel);
+            const scan = args.paths !== undefined ? undefined : await ctx.scan.files({ exts: ["css", "scss", "less"], maxFiles: MAX_SCAN_FILES });
+            const files = args.paths !== undefined ? (args.paths as unknown[]).map(String) : scan!.files.map((f) => f.rel);
             if (files.length === 0) return ok("No stylesheets found (.css/.scss/.less). Pass paths to target specific files.");
 
             const defined = new Map<string, Loc>();
@@ -76,20 +75,27 @@ export function tokenUsagePlugin(): Plugin {
             const section = (title: string, names: string[], where: Map<string, Loc>): void => {
               if (names.length === 0) return;
               const head = `\n${title} (${names.length}):`;
-              if (usedC + head.length > budget) return;
+              if (usedC + head.length > budget) {
+                out.push(`\n${title} (${names.length}): [omitted — over budget; raise maxTokens]`);
+                return;
+              }
               out.push(head);
               usedC += head.length;
+              let shown = 0;
               for (const n of names) {
                 const loc = where.get(n)!;
                 const row = `  --${n}  [${loc.file}:${loc.line}]`;
                 if (usedC + row.length + 1 > budget) break;
                 out.push(row);
                 usedC += row.length + 1;
+                shown++;
               }
+              if (shown < names.length) out.push(`  … ${names.length - shown} more — raise maxTokens`);
             };
             section("defined but unused", unused, defined);
             section("used but undefined", undef, used);
             if (unused.length === 0 && undef.length === 0) out.push("  ✓ every defined custom property is referenced; no undefined references.");
+            if (scan?.truncated) out.push(`\n[stylesheet scan truncated at ${MAX_SCAN_FILES} files — pass paths to target specific files]`);
             return ok(out.join("\n"));
           } catch (err) {
             return fail(`token_usage failed: ${errMessage(err)}`);

@@ -19,7 +19,7 @@ export function callHierarchyPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "call-hierarchy",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -80,7 +80,8 @@ export function callHierarchyPlugin(): Plugin {
             }
 
             if (target === undefined) {
-              return fail(`symbol "${symbol}" not found as a definition${scopePath ? ` under ${scopePath}` : ""}.`);
+              const inc = scan.truncated ? ` (scan stopped at ${MAX_SCAN_FILES} files — it may be defined beyond; narrow with path/type)` : "";
+              return fail(`symbol "${symbol}" not found as a definition${scopePath ? ` under ${scopePath}` : ""}${inc}.`);
             }
 
             // Callees: distinct call names within the target's span, annotated.
@@ -103,8 +104,9 @@ export function callHierarchyPlugin(): Plugin {
             const callerBlock = callers.length ? callers.join("\n") : "  (no call sites found)";
             let out =
               `call_hierarchy: ${target.sym.kind} ${symbol} (defined ${target.rel}:${target.sym.startLine})\n\n` +
-              `callees (${calleeNames.size}):\n${calleeBlock}\n\n` +
-              `callers (${callersTotal}${callersTotal > callers.length ? "+" : ""}):\n${callerBlock}`;
+              `callees (${calleeNames.size}${calleeNames.size > callees.length ? "+" : ""}):\n${calleeBlock}\n\n` +
+              `callers (${callersTotal}${callersTotal > callers.length ? "+" : ""}):\n${callerBlock}` +
+              (scan.truncated ? `\n\n[workspace scan truncated at ${MAX_SCAN_FILES} files — callers and callee resolution may be incomplete; narrow with path/type]` : "");
             if (out.length > budgetChars) {
               const cut = out.lastIndexOf("\n", budgetChars);
               out = `${out.slice(0, cut > 0 ? cut : budgetChars)}\n[truncated — raise maxTokens/headLimit or scope with path]`;

@@ -5,10 +5,14 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
+import { runEnforceCli } from "./cli/enforce.js";
+import { runStatusCli } from "./cli/status.js";
 import { loadConfig } from "./core/config.js";
 import type { CoreContext, Plugin } from "./core/contract.js";
+import { startHeartbeat } from "./core/heartbeat.js";
 import { loadPlugins } from "./core/loader.js";
 import { loadPremiumPlugins } from "./core/premium.js";
+import { VERSION } from "./version.js";
 
 // Public API for premium plugin authors: a premium package implements these
 // against this package's contract (open-core seam).
@@ -20,6 +24,7 @@ import { SafeFs } from "./services/fs.js";
 import { createEntitlement } from "./services/license.js";
 import { createLogger } from "./services/logger.js";
 import { PathSandbox } from "./services/paths.js";
+import { ReadCache } from "./services/read-cache.js";
 import { SavingsLedger } from "./services/savings.js";
 import { Scanner } from "./services/scan.js";
 
@@ -46,6 +51,7 @@ import { globPlugin } from "./plugins/glob/index.js";
 import { grepContextPlugin } from "./plugins/grep-context/index.js";
 import { healthPlugin } from "./plugins/health/index.js";
 import { importMapPlugin } from "./plugins/import-map/index.js";
+import { jsonEditPlugin } from "./plugins/json-edit/index.js";
 import { jsonQueryPlugin } from "./plugins/json-query/index.js";
 import { lineBlamePlugin } from "./plugins/line-blame/index.js";
 import { mediaInfoPlugin } from "./plugins/media-info/index.js";
@@ -68,7 +74,21 @@ import { viewImagePlugin } from "./plugins/view-image/index.js";
 import { traceLocatePlugin } from "./plugins/trace-locate/index.js";
 import { typeClosurePlugin } from "./plugins/type-closure/index.js";
 
-const VERSION = "1.0.3";
+/**
+ * Surfaced to the model in the MCP initialize result (≤2KB). A soft, fail-open
+ * preference: it can only influence, never enforce — the model still chooses.
+ */
+const INSTRUCTIONS = [
+  "efficient-token: token-efficient drop-in replacements for the host's built-in file tools.",
+  "PREFER these over Bash/Read/Grep/Glob for ALL code work:",
+  "  code_read    instead of Read, and Bash cat/head/tail/sed",
+  "  code_search  instead of Grep, and Bash grep/rg",
+  "  glob         instead of Glob, and Bash find/ls",
+  "  apply_patch  instead of Edit/Write for code (atomic, multi-file)",
+  "  code_edit    instead of Edit (single exact replace)",
+  "They return the same source/data, distilled to ~10% the tokens.",
+  "Use the built-ins only for non-code files (PDFs, notebooks, images).",
+].join("\n");
 
 /**
  * The only place features are wired together. Premium and grouped plugins can be
@@ -91,6 +111,7 @@ export const plugins: Plugin[] = [
   tokenUsagePlugin(),
   globPlugin(),
   jsonQueryPlugin(),
+  jsonEditPlugin(),
   codeSearchPlugin(),
   grepContextPlugin(),
   findReferencesPlugin(),
@@ -146,13 +167,14 @@ async function main(): Promise<void> {
     budget: new TokenBudgeter(),
     license: createEntitlement(),
     savings: new SavingsLedger(),
+    cache: new ReadCache(),
     log,
   };
 
   // Initialise the WASM runtime up front so the first tool call isn't slow.
   await ctx.ast.init();
 
-  const server = new McpServer({ name: "efficient-token", version: VERSION });
+  const server = new McpServer({ name: "efficient-token", version: VERSION }, { instructions: INSTRUCTIONS });
   // Open-core: append any optionally-installed premium plugins. The loader's tier
   // gate decides whether they actually register (they stay dark until entitled).
   const premium = await loadPremiumPlugins(log);
@@ -168,6 +190,33 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   log.info("connected on stdio");
+
+  // Opt-in enforcement heartbeat (best-effort, fail-open). It also publishes a
+  // small status JSON so `efficient-token status` / a status line can show health
+  // without an API call. Clean up on exit.
+  const stopHeartbeat = startHeartbeat(process.env.CLAUDE_PROJECT_DIR?.trim() || config.root, log, () => {
+    const s = ctx.savings.report();
+    return {
+      v: VERSION,
+      pid: process.pid,
+      ts: Date.now(),
+      tier: ctx.license.tier,
+      root: config.root,
+      maxReadTokens: config.maxReadTokens,
+      maxFileBytes: config.maxFileBytes,
+      calls: s.calls,
+      returnedTokens: s.returnedTokens,
+      baselineTokens: s.baselineTokens,
+      savedTokens: s.savedTokens,
+    };
+  });
+  process.once("exit", stopHeartbeat);
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.once(sig, () => {
+      stopHeartbeat();
+      process.exit(0);
+    });
+  }
 }
 
 /** True when this file is the process entry point (not imported by tooling). */
@@ -179,10 +228,51 @@ function isEntryPoint(): boolean {
   return process.platform === "win32" ? self.toLowerCase() === invoked.toLowerCase() : self === invoked;
 }
 
+/** Top-level CLI usage (each subcommand handles its own --help). */
+const USAGE = [
+  "efficient-token — token-efficient MCP server for Claude Code.",
+  "",
+  "Usage:",
+  "  efficient-token                            run the MCP server over stdio (how MCP hosts launch it)",
+  "  efficient-token setup [--scope user] [--no-hook] [--no-statusline]",
+  "                                             install the Bash->MCP redirect hook + health status line",
+  "  efficient-token uninstall [--scope user]   remove exactly what setup added",
+  "  efficient-token status [--line] [--json]   print server health (no API call)",
+  "  efficient-token --version                  print the version",
+  "",
+  'Run "efficient-token <command> --help" for command options.',
+].join("\n");
+
 if (isEntryPoint()) {
-  main().catch((err: unknown) => {
-    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    process.stderr.write(`[efficient-token] FATAL ${detail}\n`);
+  const sub = process.argv[2];
+  if (sub === "setup" || sub === "uninstall") {
+    // CLI mode: manage the opt-in enforcement hook, then exit (no server).
+    runEnforceCli(sub, process.argv.slice(3)).then(
+      (code) => process.exit(code),
+      (err: unknown) => {
+        process.stderr.write(`[efficient-token] ${sub} error: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.exit(1);
+      },
+    );
+  } else if (sub === "status") {
+    // Read-only health for a status line — no server, no API call.
+    process.exit(runStatusCli(process.argv.slice(3)));
+  } else if (sub === "--help" || sub === "-h" || sub === "help") {
+    process.stdout.write(`${USAGE}\n`);
+    process.exit(0);
+  } else if (sub === "--version" || sub === "-v") {
+    process.stdout.write(`${VERSION}\n`);
+    process.exit(0);
+  } else if (sub !== undefined) {
+    // An unrecognized argument: don't silently boot the stdio server (which looks
+    // like a hang to someone typing at a shell). MCP hosts launch with no args.
+    process.stderr.write(`efficient-token: unknown command ${JSON.stringify(sub)}\n${USAGE}\n`);
     process.exit(1);
-  });
+  } else {
+    main().catch((err: unknown) => {
+      const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      process.stderr.write(`[efficient-token] FATAL ${detail}\n`);
+      process.exit(1);
+    });
+  }
 }

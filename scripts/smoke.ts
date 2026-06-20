@@ -5,7 +5,7 @@
  *
  * Run: `npm run smoke`  (tsx scripts/smoke.ts)
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +16,10 @@ const execFileP = promisify(execFile);
 
 import { LANG_CASES } from "./langcases.js";
 
+import { deepMergeSetup, isManagedEntry, isManagedStatusLine, matchDrainer, removeManaged, removeManagedStatusLine, runSetup, runUninstall, setManagedStatusLine, unknownArgs } from "../src/cli/enforce.js";
+import { formatDetailed, formatStatus, readStatus } from "../src/cli/status.js";
 import { loadConfig } from "../src/core/config.js";
+import { VERSION } from "../src/version.js";
 import { boundedTail, killTree } from "../src/core/run-script.js";
 import type { CoreContext, Plugin, ToolResult } from "../src/core/contract.js";
 import { splitLines, truncate } from "../src/core/text.js";
@@ -28,6 +31,7 @@ import { createLogger } from "../src/services/logger.js";
 import { loadPlugins } from "../src/core/loader.js";
 import { loadPremiumPlugins } from "../src/core/premium.js";
 import { PathSandbox } from "../src/services/paths.js";
+import { ReadCache } from "../src/services/read-cache.js";
 import { SavingsLedger } from "../src/services/savings.js";
 import { Scanner } from "../src/services/scan.js";
 import { codeEditPlugin } from "../src/plugins/code-edit/index.js";
@@ -53,6 +57,7 @@ import { globPlugin } from "../src/plugins/glob/index.js";
 import { grepContextPlugin } from "../src/plugins/grep-context/index.js";
 import { healthPlugin } from "../src/plugins/health/index.js";
 import { importMapPlugin } from "../src/plugins/import-map/index.js";
+import { jsonEditPlugin } from "../src/plugins/json-edit/index.js";
 import { jsonQueryPlugin } from "../src/plugins/json-query/index.js";
 import { lineBlamePlugin } from "../src/plugins/line-blame/index.js";
 import { markerInventoryPlugin } from "../src/plugins/marker-inventory/index.js";
@@ -69,7 +74,7 @@ import { reviewBranchPlugin } from "../src/plugins/review-branch/index.js";
 import { svgDigestPlugin } from "../src/plugins/svg-digest/index.js";
 import { symbolFindPlugin } from "../src/plugins/symbol-find/index.js";
 import { symbolHistoryPlugin } from "../src/plugins/symbol-history/index.js";
-import { testRunPlugin } from "../src/plugins/test-run/index.js";
+import { parsePorcelain, testRunPlugin } from "../src/plugins/test-run/index.js";
 import { tokenUsagePlugin } from "../src/plugins/token-usage/index.js";
 import { traceLocatePlugin } from "../src/plugins/trace-locate/index.js";
 import { viewImagePlugin } from "../src/plugins/view-image/index.js";
@@ -137,6 +142,24 @@ async function mkTmp(prefix: string): Promise<string> {
   return fsp.realpath(await fsp.mkdtemp(path.join(os.tmpdir(), prefix)));
 }
 
+/** Run a generated hook script as a subprocess, feeding `stdin`, for fail-open tests. */
+function runHook(scriptPath: string, stdin: string, env: Record<string, string>): Promise<{ code: number; stdout: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [scriptPath], { env: { ...process.env, ...env } });
+    let out = "";
+    child.stdout.on("data", (d) => { out += d.toString(); });
+    child.on("error", () => resolve({ code: 1, stdout: out }));
+    child.on("close", (code) => resolve({ code: code ?? 0, stdout: out }));
+    child.stdin.write(stdin);
+    child.stdin.end();
+  });
+}
+
+/** Best-effort existence check for a path outside the sandbox (test temp dirs). */
+function fileThere(p: string): Promise<boolean> {
+  return fsp.access(p).then(() => true).catch(() => false);
+}
+
 async function main(): Promise<void> {
   const root = await mkTmp("efficient-token-smoke-");
   try {
@@ -163,6 +186,7 @@ async function main(): Promise<void> {
       budget: new TokenBudgeter(),
       license: createEntitlement(),
       savings: new SavingsLedger(),
+      cache: new ReadCache(),
       log,
     };
     await ctx.ast.init();
@@ -271,12 +295,16 @@ async function main(): Promise<void> {
     await health.init?.(ctx);
     const hRes = await tool(health, "health").handler({});
     check("health ok + tier", !hRes.isError && textOf(hRes).includes("efficient-token: ok") && textOf(hRes).includes("tier: free"));
+    check("health reports server version", textOf(hRes).includes(`version: ${VERSION}`));
 
     // --- code_outline plugin --------------------------------------------
     const outlinePlugin = codeOutlinePlugin();
     await outlinePlugin.init?.(ctx);
     const oRes = await tool(outlinePlugin, "code_outline").handler({ path: "sample.ts" });
     check("code_outline lists symbols", !oRes.isError && textOf(oRes).includes("symbol(s)") && textOf(oRes).includes("class Greeter"));
+    await ctx.fs.writeAtomic("outline/many.ts", Array.from({ length: 60 }, (_, i) => `export function fn${i}() {\n  return ${i};\n}`).join("\n\n") + "\n");
+    const oBig = textOf(await tool(outlinePlugin, "code_outline").handler({ path: "outline/many.ts", maxTokens: 1 }));
+    check("code_outline bounds a huge outline and discloses the count", oBig.includes("60 symbol(s)") && oBig.includes("more — raise maxTokens"));
     const oTxt = await tool(outlinePlugin, "code_outline").handler({ path: "notes.txt" });
     check("code_outline handles no-grammar", textOf(oTxt).includes("no grammar"));
 
@@ -299,13 +327,28 @@ async function main(): Promise<void> {
     const goldOut = textOf(await cr.handler({ file_path: "gold/g.txt", offset: 2, limit: 2 }));
     const goldSlice = goldOut.split("\n").filter((l) => l.includes("\t")).map((l) => l.slice(l.indexOf("\t") + 1));
     check("code_read is byte-faithful (slice == source lines)", goldSlice.length === 2 && goldSlice[0] === "L2" && goldSlice[1] === "L3");
+    // Parity with native Read: an offset past EOF signals end-of-file with no content,
+    // rather than clamping to and re-returning the last line (which breaks pagination).
+    const eofRes = textOf(await cr.handler({ file_path: "gold/g.txt", offset: 100, limit: 5 }));
+    check("code_read offset past EOF signals end-of-file (no clamped content)", eofRes.includes("past the end of file") && eofRes.includes("(5 line(s))") && !eofRes.includes("\tL5"));
+    // Large-file paging: a whole-file read over budget returns the first page of
+    // real content (like native Read) with how to continue — not an outline; a RANGE
+    // read (offset/limit) always returns exactly the requested slice.
+    const bigSrc = Array.from({ length: 3000 }, (_, i) => `const v${i} = ${i};`).join("\n") + "\n";
+    await ctx.fs.writeAtomic("big/large.ts", bigSrc);
+    const wholeBig = textOf(await cr.handler({ file_path: "big/large.ts" }));
+    check("code_read over-budget whole file returns a first content page + how to continue", wholeBig.includes("exceeds budget") && wholeBig.includes("const v0 = 0;") && wholeBig.includes("continue with offset=") && !wholeBig.includes("const v2999 = 2999;") && !wholeBig.includes("Outline:"));
+    const pagedBig = textOf(await cr.handler({ file_path: "big/large.ts", offset: 1500, limit: 20 }));
+    check("code_read pages a large file by range (slice, not outline)", pagedBig.includes("lines 1500-1519") && pagedBig.includes("const v1499 = 1499;") && !pagedBig.includes("Outline:") && !pagedBig.includes("exceeds budget"));
+    const offsetOnlyBig = textOf(await cr.handler({ file_path: "big/large.ts", offset: 2990 }));
+    check("code_read pages from offset to EOF (bounded slice, not outline)", offsetOnlyBig.includes("lines 2990-") && offsetOnlyBig.includes("const v2989 = 2989;") && !offsetOnlyBig.includes("Outline:"));
 
     const wholeRes = await cr.handler({ file_path:"sample.ts" });
     check("code_read whole-file fits", !wholeRes.isError && textOf(wholeRes).includes("class Greeter") && textOf(wholeRes).includes("interface Point"));
 
     const degradeRes = await cr.handler({ file_path:"sample.ts", maxTokens: 1 });
     const dTxt = textOf(degradeRes);
-    check("code_read degrades over budget", !degradeRes.isError && dTxt.includes("exceeds budget 1") && dTxt.includes("Outline:") && dTxt.includes("First lines:"));
+    check("code_read degrades over budget to a first content page", !degradeRes.isError && dTxt.includes("exceeds budget 1") && /\n\s*1\t/.test(dTxt) && !dTxt.includes("Outline:"));
 
     // A wide explicit range over a large file should bound output, not dump it
     // (adversarial-review fix: readRange now honours maxTokens).
@@ -643,6 +686,15 @@ async function main(): Promise<void> {
     const zw = await cs.handler({ pattern: "\\w*", path: "srch", output_mode: "count", multiline: true });
     check("code_search zero-width regex terminates", !zw.isError);
 
+    // multiline content mode must surface a cross-newline match (was a false-negative
+    // where content mode returned nothing while files/count modes found the match).
+    const mlPat = "alpha\\(\\) \\{\\}\\nconst beta";
+    const mlContent = textOf(await cs.handler({ pattern: mlPat, path: "srch", output_mode: "content", multiline: true }));
+    check("code_search multiline content returns the spanned lines", mlContent.includes("srch/a.ts:1:") && mlContent.includes("srch/a.ts:2:const beta") && !mlContent.includes("No matches"));
+    const mlFiles = textOf(await cs.handler({ pattern: mlPat, path: "srch", output_mode: "files_with_matches", multiline: true }));
+    const mlCount = textOf(await cs.handler({ pattern: mlPat, path: "srch", output_mode: "count", multiline: true }));
+    check("code_search multiline content is consistent with files/count modes", mlFiles.includes("srch/a.ts") && mlCount.includes("srch/a.ts: 1"));
+
     // Scanner should not follow a symlinked scope out of the workspace root.
     const scanOut = await mkTmp("efficient-token-scanout-");
     await fsp.writeFile(path.join(scanOut, "secret.ts"), "export const secret = 1;\n");
@@ -671,6 +723,11 @@ async function main(): Promise<void> {
     check("glob type filter excludes others", !textOf(await gl.handler({ type: "ts", path: "srch" })).includes(".txt"));
     check("glob no match", textOf(await gl.handler({ pattern: "*.zzz", path: "srch" })).includes("No files"));
     check("glob headLimit caps output", textOf(await gl.handler({ path: "srch", headLimit: 1 })).includes("1+ file(s)"));
+    // A glob explicitly rooted at an ignored dir is honored (was silently empty);
+    // a plain wildcard walk still skips ignored dirs.
+    await ctx.fs.writeAtomic("dist/built.js", "console.log(1);\n");
+    check("glob honors an explicitly-named ignored dir", textOf(await gl.handler({ pattern: "dist/**/*.js" })).includes("dist/built.js"));
+    check("glob still skips ignored dirs on a plain wildcard", !textOf(await gl.handler({ pattern: "**/*.js" })).includes("dist/built.js"));
     // glob adversarial-review regressions: negation, invalid class, scoped slash-glob, token bound, case
     await ctx.fs.writeAtomic("srch/sub/d.ts", "export const d = 1;\n");
     const globNeg = textOf(await gl.handler({ pattern: "[!a]*.ts", path: "srch" }));
@@ -719,6 +776,218 @@ async function main(): Promise<void> {
     ] });
     check("read_many does not record savings (no double-count)", rmLedger.report().calls === 0);
 
+    // F3: several symbols from one file in a single target
+    const multiSym = textOf(await rmm.handler({ reads: [{ path: "sample.ts", symbols: ["add", "Greeter"] }] }));
+    check("read_many reads multiple symbols from one file", multiSym.includes("### sample.ts symbol=add") && multiSym.includes("return a + b;") && multiSym.includes("### sample.ts symbol=Greeter") && multiSym.includes("class Greeter"));
+    // F3: deduped symbols collapse to one read
+    const dedupSym = textOf(await rmm.handler({ reads: [{ path: "sample.ts", symbols: ["add", "add"] }] }));
+    check("read_many dedupes repeated symbols", dedupSym.includes("read_many: 1/1") && (dedupSym.match(/symbol=add/g) ?? []).length === 1);
+    // F3: symbol + its same-file direct callees
+    await ctx.fs.writeAtomic("rm/calls.ts", "export function helper(n: number): number {\n  return n * 2;\n}\n\nexport function compute(n: number): number {\n  return helper(n) + helper(n + 1);\n}\n");
+    const callees = textOf(await rmm.handler({ reads: [{ path: "rm/calls.ts", symbol: "compute", withCallees: true }] }));
+    check("read_many withCallees pulls same-file callees", callees.includes("symbol=compute") && callees.includes("symbol=helper (callee of compute)") && callees.includes("return n * 2;"));
+    // F3: a callee already named explicitly is not duplicated
+    const noDup = textOf(await rmm.handler({ reads: [{ path: "rm/calls.ts", symbols: ["compute", "helper"], withCallees: true }] }));
+    check("read_many withCallees does not duplicate an explicit symbol", noDup.includes("read_many: 2/2") && (noDup.match(/symbol=helper/g) ?? []).length === 1);
+    // F3: the SAME symbol named in two separate targets must not be read (or budgeted) twice.
+    const crossDup = textOf(await rmm.handler({ reads: [{ path: "sample.ts", symbol: "add" }, { path: "sample.ts", symbol: "add" }] }));
+    check("read_many dedupes the same symbol across separate targets", crossDup.includes("read_many: 1/1") && crossDup.includes("duplicate target(s) merged") && (crossDup.match(/symbol=add/g) ?? []).length === 1);
+    // F3: a callee pulled by one target, then named explicitly by another, appears once.
+    const crossCallee = textOf(await rmm.handler({ reads: [{ path: "rm/calls.ts", symbol: "compute", withCallees: true }, { path: "rm/calls.ts", symbol: "helper" }] }));
+    check("read_many dedupes a callee that another target names explicitly", crossCallee.includes("duplicate target(s) merged") && (crossCallee.match(/symbol=helper/g) ?? []).length === 1);
+    // adversarial-review fix: a method call (db.save()) must not pull in a same-named top-level function.
+    await ctx.fs.writeAtomic("rm/repo.ts", "export function save() {\n  return 1;\n}\nexport function run(db: { save: () => void }) {\n  db.save();\n}\n");
+    const memberCallees = textOf(await rmm.handler({ reads: [{ path: "rm/repo.ts", symbol: "run", withCallees: true }] }));
+    check("read_many withCallees ignores method calls (no false callee)", memberCallees.includes("symbol=run") && !memberCallees.includes("callee of run"));
+
+    // --- F1: opt-in re-read elision (code_read elideIfUnchanged) ---------
+    await ctx.fs.writeAtomic("reread/mod.ts", "export function thing() {\n  return 1;\n}\n");
+    const crEi = codeReadPlugin();
+    await crEi.init?.(ctx);
+    const cre = tool(crEi, "code_read");
+    const reFirst = textOf(await cre.handler({ file_path: "reread/mod.ts", symbol: "thing", elideIfUnchanged: true }));
+    check("code_read first elide call returns full source", reFirst.includes("return 1;") && !reFirst.includes("elided"));
+    const reSecond = textOf(await cre.handler({ file_path: "reread/mod.ts", symbol: "thing", elideIfUnchanged: true }));
+    check("code_read elides an unchanged repeat read", reSecond.includes("elided") && !reSecond.includes("return 1;") && reSecond.includes("reread/mod.ts"));
+    const reForced = textOf(await cre.handler({ file_path: "reread/mod.ts", symbol: "thing" }));
+    check("code_read without the flag returns full source again", reForced.includes("return 1;") && !reForced.includes("elided"));
+    await ctx.fs.writeAtomic("reread/mod.ts", "export function thing() {\n  return 2;\n}\n");
+    const reChanged = textOf(await cre.handler({ file_path: "reread/mod.ts", symbol: "thing", elideIfUnchanged: true }));
+    check("code_read elide returns full bytes after a change", reChanged.includes("return 2;") && !reChanged.includes("elided"));
+    // adversarial-review fix: a lossy/degraded over-budget read must never elide
+    // (its rendered text can't safely stand in for the bytes).
+    await ctx.fs.writeAtomic("reread/big.ts", `${Array.from({ length: 600 }, (_, i) => `export const v${i} = ${i};`).join("\n")}\n`);
+    await cre.handler({ file_path: "reread/big.ts", maxTokens: 200, elideIfUnchanged: true });
+    const big2 = textOf(await cre.handler({ file_path: "reread/big.ts", maxTokens: 200, elideIfUnchanged: true }));
+    check("code_read never elides a degraded over-budget read", !big2.includes("elided") && big2.includes("exceeds budget"));
+
+    // --- enforcement (opt-in, fail-open) --------------------------------
+    // drainer matching: only read-only Bash commands with an MCP equivalent
+    check("enforce: bare grep -> code_search", matchDrainer("grep -n foo src") === "code_search");
+    check("enforce: bare rg -> code_search", matchDrainer("rg foo") === "code_search");
+    check("enforce: bare cat -> code_read", matchDrainer("cat package.json") === "code_read");
+    check("enforce: bare head -> code_read", matchDrainer("head -50 file.ts") === "code_read");
+    check("enforce: bare find -> glob", matchDrainer("find . -name '*.ts'") === "glob");
+    check("enforce: bare ls -> glob", matchDrainer("ls src") === "glob");
+    check("enforce: git not matched", matchDrainer("git status") === null);
+    check("enforce: flutter not matched", matchDrainer("flutter test") === null && matchDrainer("flutter analyze") === null);
+    check("enforce: npm not matched", matchDrainer("npm install") === null);
+    check("enforce: unknown first token not matched", matchDrainer("catalog build") === null);
+    // adversarial-review fixes: never redirect pipelines, chains, mutations, redirects, or quoted drainers
+    check("enforce: pipeline with a protected head not matched", matchDrainer("npm test | grep PASS") === null && matchDrainer("git log --oneline | head -20") === null);
+    check("enforce: chained command not matched", matchDrainer("yarn build && ls dist") === null);
+    check("enforce: in-place sed not matched", matchDrainer("sed -i 's/a/b/' f.txt") === null && matchDrainer("sed --in-place s/a/b/ f") === null);
+    check("enforce: destructive find not matched", matchDrainer("find . -delete") === null && matchDrainer("find . -name '*.tmp' -exec rm {} +") === null);
+    check("enforce: output redirection not matched", matchDrainer("cat > out.txt") === null && matchDrainer("cat a >> out.txt") === null);
+    check("enforce: tail -f not matched", matchDrainer("tail -f server.log") === null);
+    check("enforce: quoted drainer inside another command not matched", matchDrainer('git commit -m "refactor; grep helper"') === null);
+
+    // CLI must never run a writing action on an unrecognized flag
+    check("enforce: unknownArgs rejects unknown flags", unknownArgs(["--help"]).length === 1 && unknownArgs(["--bogus"]).length === 1 && unknownArgs(["--scope", "nope"]).includes("nope"));
+    check("enforce: unknownArgs accepts valid scope flags", unknownArgs([]).length === 0 && unknownArgs(["--scope", "user"]).length === 0 && unknownArgs(["--scope=user"]).length === 0 && unknownArgs(["--user"]).length === 0);
+
+    // settings deep-merge idempotency + preserving unrelated config
+    const ecmd = `node "\${CLAUDE_PROJECT_DIR}/.claude/hooks/efficient-token-redirect.mjs"`;
+    const em1 = deepMergeSetup({}, ecmd);
+    check("enforce: merge adds one managed entry", (em1.hooks?.PreToolUse?.length ?? 0) === 1 && isManagedEntry(em1.hooks!.PreToolUse![0]!));
+    check("enforce: merge is idempotent", (deepMergeSetup(em1, ecmd).hooks?.PreToolUse?.length ?? 0) === 1);
+    const ebase = { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node other.mjs" }] }], PostToolUse: [{ matcher: "Edit", hooks: [] }] }, permissions: { allow: ["x"] } };
+    const em3 = deepMergeSetup(ebase, ecmd) as Record<string, any>;
+    check(
+      "enforce: merge preserves unrelated settings",
+      em3.permissions.allow[0] === "x" &&
+        em3.hooks.PostToolUse.length === 1 &&
+        em3.hooks.PreToolUse.some((e: any) => e.hooks[0].command === "node other.mjs") &&
+        em3.hooks.PreToolUse.filter(isManagedEntry).length === 1,
+    );
+    const eback = removeManaged(em3) as Record<string, any>;
+    check(
+      "enforce: removeManaged restores (managed gone, others kept)",
+      eback.hooks.PreToolUse.length === 1 && !eback.hooks.PreToolUse.some(isManagedEntry) && eback.permissions.allow[0] === "x",
+    );
+    check("enforce: removeManaged prunes empty hooks", removeManaged(deepMergeSetup({}, ecmd)).hooks === undefined);
+    // adversarial-review fix: a non-object `hooks` is coerced, never silently dropped
+    const emArr = deepMergeSetup({ hooks: ["weird"] } as never, ecmd) as Record<string, any>;
+    check("enforce: merge coerces non-object hooks and still installs", Array.isArray(emArr.hooks.PreToolUse) && emArr.hooks.PreToolUse.filter(isManagedEntry).length === 1);
+
+    // setup / uninstall on disk (isolated temp project)
+    const enfRoot = await mkTmp("efficient-token-enforce-");
+    const enfSettings = path.join(enfRoot, ".claude", "settings.local.json");
+    const enfScript = path.join(enfRoot, ".claude", "hooks", "efficient-token-redirect.mjs");
+    runSetup({ scope: "project", projectRoot: enfRoot });
+    const es1 = JSON.parse(await fsp.readFile(enfSettings, "utf8"));
+    check("enforce: setup writes a managed Bash hook", es1.hooks.PreToolUse.length === 1 && es1.hooks.PreToolUse[0].matcher === "Bash");
+    check("enforce: setup writes the redirect script", await fileThere(enfScript));
+    runSetup({ scope: "project", projectRoot: enfRoot });
+    check("enforce: setup is idempotent on disk", JSON.parse(await fsp.readFile(enfSettings, "utf8")).hooks.PreToolUse.length === 1);
+    runUninstall({ scope: "project", projectRoot: enfRoot });
+    const es3 = JSON.parse(await fsp.readFile(enfSettings, "utf8"));
+    check("enforce: uninstall removes the managed hook", es3.hooks === undefined || (es3.hooks.PreToolUse ?? []).length === 0);
+    check("enforce: uninstall removes the redirect script", !(await fileThere(enfScript)));
+
+    // adversarial-review fix: the pristine backup survives a second setup run
+    const bakRoot = await mkTmp("efficient-token-bak-");
+    await fsp.mkdir(path.join(bakRoot, ".claude"), { recursive: true });
+    await fsp.writeFile(path.join(bakRoot, ".claude", "settings.local.json"), '{"userKey":"original"}\n');
+    runSetup({ scope: "project", projectRoot: bakRoot });
+    runSetup({ scope: "project", projectRoot: bakRoot });
+    const bakJson = JSON.parse(await fsp.readFile(path.join(bakRoot, ".claude", "settings.local.json.bak"), "utf8"));
+    check("enforce: pristine backup preserved across re-runs", bakJson.userKey === "original" && bakJson.hooks === undefined);
+
+    // --- status line setup (setup also installs the always-visible status) ---
+    check("enforce: isManagedStatusLine recognizes ours vs foreign", isManagedStatusLine({ type: "command", command: "node x/efficient-token-status.mjs" }) && !isManagedStatusLine({ type: "command", command: "node mine.js" }) && !isManagedStatusLine(undefined));
+    const slSetLog: string[] = [];
+    const slSet = setManagedStatusLine({ statusLine: { type: "command", command: "node foreign.js" } }, "node a/efficient-token-status.mjs", slSetLog) as Record<string, any>;
+    check("enforce: setManagedStatusLine never clobbers a foreign statusLine", slSet.statusLine.command === "node foreign.js");
+    const slRm = removeManagedStatusLine({ statusLine: { type: "command", command: "node foreign.js" } }, []) as Record<string, any>;
+    check("enforce: removeManagedStatusLine leaves a foreign statusLine intact", slRm.statusLine.command === "node foreign.js");
+
+    // on disk: setup installs a managed statusLine + script; uninstall removes them
+    const slRoot = await mkTmp("efficient-token-sl-");
+    runSetup({ scope: "project", projectRoot: slRoot });
+    const slSettings = JSON.parse(await fsp.readFile(path.join(slRoot, ".claude", "settings.local.json"), "utf8"));
+    const slScriptPath = path.join(slRoot, ".claude", "hooks", "efficient-token-status.mjs");
+    check("enforce: setup installs a managed statusLine + script", isManagedStatusLine(slSettings.statusLine) && (await fileThere(slScriptPath)));
+    runUninstall({ scope: "project", projectRoot: slRoot });
+    const slAfter = JSON.parse(await fsp.readFile(path.join(slRoot, ".claude", "settings.local.json"), "utf8"));
+    check("enforce: uninstall removes the managed statusLine + script", slAfter.statusLine === undefined && !(await fileThere(slScriptPath)));
+
+    // setup must not clobber a user's own statusLine, on disk
+    const fgRoot = await mkTmp("efficient-token-slfg-");
+    await fsp.mkdir(path.join(fgRoot, ".claude"), { recursive: true });
+    await fsp.writeFile(path.join(fgRoot, ".claude", "settings.local.json"), JSON.stringify({ statusLine: { type: "command", command: "node my-own-status.js" } }));
+    runSetup({ scope: "project", projectRoot: fgRoot });
+    check("enforce: setup keeps a user's own statusLine (on disk)", JSON.parse(await fsp.readFile(path.join(fgRoot, ".claude", "settings.local.json"), "utf8")).statusLine.command === "node my-own-status.js");
+    runUninstall({ scope: "project", projectRoot: fgRoot });
+    check("enforce: uninstall leaves a user's own statusLine (on disk)", JSON.parse(await fsp.readFile(path.join(fgRoot, ".claude", "settings.local.json"), "utf8")).statusLine.command === "node my-own-status.js");
+
+    // --no-statusline / --no-hook scope the setup
+    const nsRoot = await mkTmp("efficient-token-nosl-");
+    runSetup({ scope: "project", projectRoot: nsRoot, statusLine: false });
+    const nsSettings = JSON.parse(await fsp.readFile(path.join(nsRoot, ".claude", "settings.local.json"), "utf8"));
+    check("enforce: --no-statusline keeps the hook, skips the status line", nsSettings.statusLine === undefined && nsSettings.hooks.PreToolUse.length === 1 && !(await fileThere(path.join(nsRoot, ".claude", "hooks", "efficient-token-status.mjs"))));
+    const nhRoot = await mkTmp("efficient-token-nohook-");
+    runSetup({ scope: "project", projectRoot: nhRoot, hook: false });
+    const nhSettings = JSON.parse(await fsp.readFile(path.join(nhRoot, ".claude", "settings.local.json"), "utf8"));
+    check("enforce: --no-hook installs only the status line", isManagedStatusLine(nhSettings.statusLine) && (nhSettings.hooks === undefined || (nhSettings.hooks.PreToolUse ?? []).length === 0) && !(await fileThere(path.join(nhRoot, ".claude", "hooks", "efficient-token-redirect.mjs"))));
+
+    // the generated status-line script prints health from the heartbeat (subprocess)
+    const slGen = path.join(nhRoot, ".claude", "hooks", "efficient-token-status.mjs");
+    await fsp.writeFile(path.join(nhRoot, ".claude", ".efficient-token.alive"), JSON.stringify({ v: "1.2.3", tier: "free", calls: 5, savedTokens: 4096, baselineTokens: 51200, returnedTokens: 47104 }));
+    let slHk = await runHook(slGen, "", { CLAUDE_PROJECT_DIR: nhRoot });
+    check("enforce: status-line script prints processed->passed + percent when up", slHk.code === 0 && slHk.stdout.includes("v1.2.3") && slHk.stdout.includes("(free)") && slHk.stdout.includes("51.2k token read and passed 47.1k token to Claude") && slHk.stdout.includes("~8% less"));
+    await fsp.rm(path.join(nhRoot, ".claude", ".efficient-token.alive"), { force: true });
+    slHk = await runHook(slGen, "", { CLAUDE_PROJECT_DIR: nhRoot });
+    check("enforce: status-line script prints not running when down", slHk.code === 0 && slHk.stdout.includes("not running"));
+
+    // redirect script fail-open behavior, exercised as a real subprocess
+    runSetup({ scope: "project", projectRoot: enfRoot }); // recreate the script
+    const beatFile = path.join(enfRoot, ".claude", ".efficient-token.alive");
+    const grepIn = JSON.stringify({ tool_input: { command: "grep foo" } });
+    const env = { CLAUDE_PROJECT_DIR: enfRoot };
+    let hk = await runHook(enfScript, "not json", env);
+    check("enforce: unparseable stdin allows", hk.code === 0 && hk.stdout.trim() === "");
+    hk = await runHook(enfScript, JSON.stringify({ tool_input: { command: "git status" } }), env);
+    check("enforce: non-drainer allows", hk.code === 0 && hk.stdout.trim() === "");
+    try { await fsp.rm(beatFile, { force: true }); } catch { /* ignore */ }
+    hk = await runHook(enfScript, grepIn, env);
+    check("enforce: drainer + missing heartbeat allows (fail-open)", hk.code === 0 && hk.stdout.trim() === "");
+    await fsp.writeFile(beatFile, "x");
+    hk = await runHook(enfScript, grepIn, env);
+    check("enforce: drainer + live heartbeat denies with redirect", hk.code === 0 && hk.stdout.includes('"permissionDecision":"deny"') && hk.stdout.includes("code_search"));
+    // even with a live heartbeat, the hook must never block pipelines/mutations
+    hk = await runHook(enfScript, JSON.stringify({ tool_input: { command: "npm test | grep PASS" } }), env);
+    check("enforce: protected command in a pipeline never denied (live)", hk.code === 0 && hk.stdout.trim() === "");
+    hk = await runHook(enfScript, JSON.stringify({ tool_input: { command: "sed -i 's/a/b/' f.txt" } }), env);
+    check("enforce: in-place sed never denied (live)", hk.code === 0 && hk.stdout.trim() === "");
+    hk = await runHook(enfScript, JSON.stringify({ tool_input: { command: "find . -delete" } }), env);
+    check("enforce: destructive find never denied (live)", hk.code === 0 && hk.stdout.trim() === "");
+    const staleSecs = Date.now() / 1000 - 600;
+    await fsp.utimes(beatFile, staleSecs, staleSecs);
+    hk = await runHook(enfScript, grepIn, env);
+    check("enforce: drainer + stale heartbeat allows (fail-open)", hk.code === 0 && hk.stdout.trim() === "");
+    await fsp.writeFile(beatFile, "x"); // fresh again
+    hk = await runHook(enfScript, JSON.stringify({ tool_input: { command: "flutter test" } }), env);
+    check("enforce: flutter test never denied (live heartbeat)", hk.code === 0 && hk.stdout.trim() === "");
+
+    // --- status (health shown in-session without an API call) -----------
+    const stRoot = await mkTmp("efficient-token-status-");
+    const stBeat = path.join(stRoot, ".claude", ".efficient-token.alive");
+    await fsp.mkdir(path.join(stRoot, ".claude"), { recursive: true });
+    check("status: down when no heartbeat", readStatus(stRoot).up === false && formatStatus(readStatus(stRoot)).includes("not running") && formatDetailed(readStatus(stRoot)).includes("not running"));
+    await fsp.writeFile(stBeat, JSON.stringify({ v: "9.9.9", pid: 1, ts: Date.now(), tier: "free", root: "/proj", maxReadTokens: 6000, maxFileBytes: 2000000, calls: 3, returnedTokens: 10, baselineTokens: 130, savedTokens: 120 }));
+    const stUp = readStatus(stRoot);
+    check("status: up parses version/tier/root/limits/savings", stUp.up === true && stUp.version === "9.9.9" && stUp.tier === "free" && stUp.root === "/proj" && stUp.maxReadTokens === 6000 && stUp.maxFileBytes === 2000000 && stUp.savedTokens === 120 && stUp.baselineTokens === 130 && stUp.calls === 3);
+    const stDet = formatDetailed(stUp);
+    check("status: detailed report mirrors health", stDet.includes("efficient-token: up") && stDet.includes("version: 9.9.9") && stDet.includes("tier: free") && stDet.includes("root: /proj") && stDet.includes("maxReadTokens: 6000") && stDet.includes("savings this session") && stDet.includes("read ~130 tokens of source and passed ~10 to Claude") && stDet.includes("~92% fewer") && stDet.includes("saved ~120 tokens"));
+    check("status: compact one-liner shows processed->passed + percent", formatStatus(stUp).includes("v9.9.9") && formatStatus(stUp).includes("(free)") && formatStatus(stUp).includes("up") && formatStatus(stUp).includes("130 token read and passed 10 token to Claude") && formatStatus(stUp).includes("~92% less"));
+    const stStale = Date.now() / 1000 - 600;
+    await fsp.utimes(stBeat, stStale, stStale);
+    check("status: stale heartbeat -> not running", readStatus(stRoot).up === false);
+    await fsp.writeFile(stBeat, String(Date.now())); // legacy plain-timestamp heartbeat
+    const stPlain = readStatus(stRoot);
+    check("status: plain heartbeat is up without detail", stPlain.up === true && stPlain.version === undefined);
+
     // --- json_query plugin ----------------------------------------------
     await ctx.fs.writeAtomic("jq/data.json", JSON.stringify({ name: "pkg", scripts: { build: "tsc", test: "vitest" }, deps: ["a", "b", "c"], nested: { deep: { value: 42 } } }, null, 2));
     const jqPlugin = jsonQueryPlugin();
@@ -755,6 +1024,87 @@ async function main(): Promise<void> {
       } else if (c >= 0xdc00 && c <= 0xdfff) { loneSurrogate = true; break; }
     }
     check("json_query render is surrogate-safe", jqEmoji.includes("truncated") && !loneSurrogate);
+
+    // --- json_edit plugin (json_get / json_set) -------------------------
+    const arb = {
+      "@@locale": "en",
+      greeting: "Hello",
+      "@greeting": { description: "A greeting" },
+      farewell: "Goodbye",
+    };
+    await ctx.fs.writeAtomic("je/app_en.json", `${JSON.stringify(arb, null, 2)}\n`);
+    const jePlugin = jsonEditPlugin();
+    await jePlugin.init?.(ctx);
+    const jget = tool(jePlugin, "json_get");
+    const jset = tool(jePlugin, "json_set");
+
+    const got = textOf(await jget.handler({ path: "je/app_en.json", key: "greeting" }));
+    check("json_get returns value + sibling metadata", got.includes("Hello") && got.includes("A greeting") && got.includes("@greeting"));
+    const getMiss = await jget.handler({ path: "je/app_en.json", key: "nope" });
+    check("json_get missing key lists available (no @ keys)", getMiss.isError === true && textOf(getMiss).includes("greeting") && !textOf(getMiss).includes("@greeting"));
+
+    // update an existing key in place; the rest of the file must be preserved
+    const jeBefore = (await ctx.fs.read("je/app_en.json")).content;
+    const jeUpd = await jset.handler({ path: "je/app_en.json", key: "greeting", value: "Hi there" });
+    check("json_set updates a key", !jeUpd.isError && textOf(jeUpd).includes("updated"));
+    const jeAfter = (await ctx.fs.read("je/app_en.json")).content;
+    const jeObj = JSON.parse(jeAfter);
+    check(
+      "json_set update is correct + faithful",
+      jeObj.greeting === "Hi there" && jeObj.farewell === "Goodbye" && jeObj["@@locale"] === "en" && JSON.stringify(jeObj["@greeting"]) === JSON.stringify({ description: "A greeting" }),
+    );
+    check("json_set leaves preceding bytes intact", jeBefore.slice(0, jeBefore.indexOf('"greeting"')) === jeAfter.slice(0, jeAfter.indexOf('"greeting"')));
+
+    // upsert a new key + metadata with placeholders (multi-line object value)
+    const jeIns = await jset.handler({ path: "je/app_en.json", key: "welcome", value: "Welcome {name}", metadata: { description: "Welcome msg", placeholders: { name: {} } } });
+    check("json_set inserts a new key + metadata", !jeIns.isError && textOf(jeIns).includes("created"));
+    const jeIns2 = JSON.parse((await ctx.fs.read("je/app_en.json")).content);
+    check("json_set insert is correct", jeIns2.welcome === "Welcome {name}" && jeIns2["@welcome"]?.placeholders?.name !== undefined && jeIns2.greeting === "Hi there");
+
+    // values with structural chars must not corrupt the surgical scan
+    await jset.handler({ path: "je/app_en.json", key: "tricky", value: 'a {x}, "b" : [c]' });
+    const jeTricky = JSON.parse((await ctx.fs.read("je/app_en.json")).content);
+    check("json_set handles structural chars in values", jeTricky.tricky === 'a {x}, "b" : [c]' && jeTricky.welcome === "Welcome {name}");
+
+    // insert into an empty object
+    await ctx.fs.writeAtomic("je/empty.json", "{}\n");
+    await jset.handler({ path: "je/empty.json", key: "first", value: 1 });
+    check("json_set inserts into an empty object", JSON.parse((await ctx.fs.read("je/empty.json")).content).first === 1);
+
+    // metadata-only update of an existing sibling
+    await jset.handler({ path: "je/app_en.json", key: "greeting", metadata: { description: "Updated desc" } });
+    const jeMeta = JSON.parse((await ctx.fs.read("je/app_en.json")).content);
+    check("json_set metadata-only update", jeMeta["@greeting"].description === "Updated desc" && jeMeta.greeting === "Hi there");
+
+    // a CRLF file keeps CRLF in inserted/updated regions (no mixed line endings)
+    await ctx.fs.writeAtomic("je/crlf.json", '{\r\n  "a": "1"\r\n}\r\n');
+    await jset.handler({ path: "je/crlf.json", key: "b", value: "two", metadata: { description: "d" } });
+    const crlfOut = (await ctx.fs.read("je/crlf.json")).content;
+    check("json_set preserves CRLF line endings", JSON.parse(crlfOut).b === "two" && !/(?<!\r)\n/.test(crlfOut));
+
+    // guards
+    await ctx.fs.writeAtomic("je/arr.json", "[1,2,3]\n");
+    check("json_set rejects a non-object root", (await jset.handler({ path: "je/arr.json", key: "x", value: 1 })).isError === true);
+    check("json_set requires value or metadata", (await jset.handler({ path: "je/app_en.json", key: "greeting" })).isError === true);
+    check("json_set rejects an invalid JSON file", (await jset.handler({ path: "jq/bad.json", key: "x", value: 1 })).isError === true);
+    check("json_set rejects empty metaPrefix with metadata", (await jset.handler({ path: "je/app_en.json", key: "greeting", value: "x", metadata: {}, metaPrefix: "" })).isError === true);
+
+    // adversarial-review fix: a leading BOM is preserved, not rejected as invalid JSON
+    await ctx.fs.writeAtomic("je/bom.json", `﻿{\n  "a": 1\n}\n`);
+    const bomRes = await jset.handler({ path: "je/bom.json", key: "b", value: 2 });
+    const bomOut = (await ctx.fs.readRaw("je/bom.json")).content;
+    check("json_set preserves a leading BOM", !bomRes.isError && bomOut.charCodeAt(0) === 0xfeff && JSON.parse(bomOut.slice(1)).b === 2 && JSON.parse(bomOut.slice(1)).a === 1);
+
+    // adversarial-review fix: duplicate top-level key edits the effective (last) one
+    await ctx.fs.writeAtomic("je/dup.json", '{\n  "a": 1,\n  "a": 2\n}\n');
+    await jset.handler({ path: "je/dup.json", key: "a", value: 99 });
+    check("json_set updates the effective duplicate key", JSON.parse((await ctx.fs.read("je/dup.json")).content).a === 99);
+
+    // adversarial-review fix: insert adopts the file's real indent even when the first member is inline with {
+    await ctx.fs.writeAtomic("je/indent.json", '{"a": 1,\n    "b": 2\n}\n');
+    await jset.handler({ path: "je/indent.json", key: "c", value: 3 });
+    const indentOut = (await ctx.fs.read("je/indent.json")).content;
+    check("json_set inserts with the file's actual indent", indentOut.includes('\n    "c": 3') && JSON.parse(indentOut).c === 3);
 
     // --- view_image plugin ----------------------------------------------
     const viPlugin = viewImagePlugin();
@@ -812,6 +1162,9 @@ async function main(): Promise<void> {
     const dtColor = textOf(await dt.handler({ paths: ["dt/theme.css"], category: "color" }));
     check("design_tokens category filter", dtColor.includes("color-primary") && !dtColor.includes("space-4"));
     check("design_tokens classifies fonts by name", textOf(await dt.handler({ paths: ["dt/theme.css"], category: "font" })).includes("font-family-base"));
+    await ctx.fs.writeAtomic("dt/arr.json", JSON.stringify({ stack: ["alpha", "beta"] }));
+    const dtArr = textOf(await dt.handler({ paths: ["dt/arr.json"] }));
+    check("design_tokens descends into JSON arrays (no silent drop)", dtArr.includes("stack-0 = alpha") && dtArr.includes("stack-1 = beta"));
 
     // --- color_contrast plugin ------------------------------------------
     const colPlugin = colorContrastPlugin();
@@ -1022,6 +1375,7 @@ async function main(): Promise<void> {
     check("call_hierarchy lists callees with their defs", chRes.includes("callees (2)") && chRes.includes("helper") && chRes.includes("other") && chRes.includes("ch/lib.ts"));
     check("call_hierarchy lists callers with enclosing symbol", chRes.includes("callers (1") && chRes.includes("ch/use.ts:2") && chRes.includes("run"));
     check("call_hierarchy unknown symbol errors", (await ch.handler({ symbol: "nopeFn", path: "ch" })).isError === true);
+    check("call_hierarchy discloses a callee cap with +", textOf(await ch.handler({ symbol: "target", path: "ch", headLimit: 1 })).includes("callees (2+)"));
 
     // --- move_symbol plugin ---------------------------------------------
     await ctx.fs.writeAtomic("ms/a.ts", "export function moved() {\n  return 1;\n}\nexport function stays() {\n  return moved() + 1;\n}\n");
@@ -1108,6 +1462,33 @@ async function main(): Promise<void> {
     const rmapHeaders = m3t.split("\n").filter((l) => l === "rmap/").length;
     check("repo_map emits each directory header once", rmapHeaders === 1, `headers=${rmapHeaders}`);
 
+    // --- F4: generated-file awareness (code_search / repo_map) ----------
+    await ctx.fs.writeAtomic("genf/keep.ts", "export const FINDGENTOKEN = 1;\n");
+    await ctx.fs.writeAtomic("genf/skip.min.js", "const FINDGENTOKEN = 2;\n");
+    await ctx.fs.writeAtomic("genf/marked.ts", "// @generated\nexport const FINDGENTOKEN = 3;\n");
+    const csGenPlugin = codeSearchPlugin();
+    await csGenPlugin.init?.(ctx);
+    const csGen = tool(csGenPlugin, "code_search");
+    const csHidden = textOf(await csGen.handler({ pattern: "FINDGENTOKEN", path: "genf" }));
+    check("code_search hides generated (glob + @generated) by default", csHidden.includes("genf/keep.ts") && !csHidden.includes("skip.min.js") && !csHidden.includes("marked.ts") && csHidden.includes("2 generated file(s) hidden"));
+    const csInc = textOf(await csGen.handler({ pattern: "FINDGENTOKEN", path: "genf", includeGenerated: true }));
+    check("code_search includeGenerated shows generated files", csInc.includes("genf/keep.ts") && csInc.includes("skip.min.js") && csInc.includes("marked.ts"));
+
+    const rmGenPlugin = repoMapPlugin();
+    await rmGenPlugin.init?.(ctx);
+    const rmGen = tool(rmGenPlugin, "repo_map");
+    const rmHidden = textOf(await rmGen.handler({ path: "genf" }));
+    check("repo_map hides generated files by default", rmHidden.includes("keep.ts") && !rmHidden.includes("skip.min.js") && !rmHidden.includes("marked.ts") && rmHidden.includes("generated file(s) hidden"));
+    const rmInc = textOf(await rmGen.handler({ path: "genf", includeGenerated: true }));
+    check("repo_map includeGenerated shows generated files", rmInc.includes("skip.min.js") && rmInc.includes("marked.ts"));
+    // adversarial-review fix: only a leading-comment @generated marker counts, not prose/mid-file mentions
+    await ctx.fs.writeAtomic("genf/prose.ts", "// This documents the @generated convention; this file is hand-written.\nexport const PROSEGEN = 1;\n");
+    await ctx.fs.writeAtomic("genf/midgen.ts", "export const MIDGEN = 1;\n// @generated\n");
+    const proseSearch = textOf(await csGen.handler({ pattern: "PROSEGEN", path: "genf" }));
+    check("code_search keeps a file that only mentions @generated in prose", proseSearch.includes("genf/prose.ts"));
+    const midSearch = textOf(await csGen.handler({ pattern: "MIDGEN", path: "genf" }));
+    check("code_search keeps a file with a non-leading @generated", midSearch.includes("genf/midgen.ts"));
+
     // --- diff_digest plugin ---------------------------------------------
     // Non-repo: the smoke root is not a git repo.
     const ddNonRepo = diffDigestPlugin();
@@ -1150,6 +1531,90 @@ async function main(): Promise<void> {
 
       await g(["add", "f.ts"]);
       check("diff_digest staged mode", textOf(await dd.handler({ staged: true })).includes("+export const b = 3;"));
+
+      // F4: diff_digest hides generated changed files (isolated repo so the
+      // sequence above is untouched).
+      const genGitRoot = await mkTmp("efficient-token-git-gen-");
+      const g2 = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: genGitRoot });
+      await g2(["init", "-q"]);
+      await g2(["config", "user.email", "t@example.com"]);
+      await g2(["config", "user.name", "Test"]);
+      await g2(["config", "commit.gpgsign", "false"]);
+      await fsp.writeFile(path.join(genGitRoot, "app.ts"), "export const x = 1;\n");
+      await fsp.writeFile(path.join(genGitRoot, "bundle.min.js"), "var a=1;\n");
+      await g2(["add", "."]);
+      await g2(["commit", "-q", "-m", "init"]);
+      await fsp.writeFile(path.join(genGitRoot, "app.ts"), "export const x = 2;\n");
+      await fsp.writeFile(path.join(genGitRoot, "bundle.min.js"), "var a=2;\n");
+      const genPaths = new PathSandbox(genGitRoot);
+      const genctx: CoreContext = { ...ctx, config: { ...config, root: genGitRoot }, paths: genPaths, fs: new SafeFs(genPaths, config.maxFileBytes), scan: new Scanner(genPaths) };
+      const ddGenPlugin = diffDigestPlugin();
+      await ddGenPlugin.init?.(genctx);
+      const ddGen = tool(ddGenPlugin, "diff_digest");
+      const ddGenOut = textOf(await ddGen.handler({}));
+      check("diff_digest hides generated changed files by default", ddGenOut.includes("app.ts") && !ddGenOut.includes("bundle.min.js") && ddGenOut.includes("generated file(s) hidden"));
+      const ddGenInc = textOf(await ddGen.handler({ includeGenerated: true }));
+      check("diff_digest includeGenerated shows generated changes", ddGenInc.includes("bundle.min.js"));
+
+      // F5: test_run changed — select & run only tests affected by the diff (isolated repo)
+      const tsGitRoot = await mkTmp("efficient-token-git-tr-");
+      const g3 = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: tsGitRoot });
+      await g3(["init", "-q"]);
+      await g3(["config", "user.email", "t@example.com"]);
+      await g3(["config", "user.name", "Test"]);
+      await g3(["config", "commit.gpgsign", "false"]);
+      await fsp.writeFile(path.join(tsGitRoot, "package.json"), JSON.stringify({ name: "t", version: "1.0.0", scripts: { t: 'node -e "process.exit(0)"' } }));
+      await fsp.mkdir(path.join(tsGitRoot, "src"), { recursive: true });
+      await fsp.writeFile(path.join(tsGitRoot, "src", "calc.ts"), "export function calc() {\n  return 1;\n}\n");
+      await fsp.writeFile(path.join(tsGitRoot, "src", "calc.test.ts"), "import { calc } from './calc.js';\nit('calc', () => { calc(); });\n");
+      await fsp.writeFile(path.join(tsGitRoot, "src", "util.test.ts"), "it('util', () => {});\n");
+      await fsp.writeFile(path.join(tsGitRoot, "src", "lonely.test.ts"), "it('lonely', () => {});\n");
+      await fsp.writeFile(path.join(tsGitRoot, "src", "calc$weird.test.ts"), "import { calc } from './calc.js';\nit('w', () => { calc(); });\n");
+      await g3(["add", "."]);
+      await g3(["commit", "-q", "-m", "init"]);
+      await fsp.writeFile(path.join(tsGitRoot, "src", "calc.ts"), "export function calc() {\n  return 2;\n}\n");
+      await fsp.writeFile(path.join(tsGitRoot, "src", "util.test.ts"), "it('util', () => { return 1; });\n");
+      const trPaths = new PathSandbox(tsGitRoot);
+      const trctx: CoreContext = { ...ctx, config: { ...config, root: tsGitRoot }, paths: trPaths, fs: new SafeFs(trPaths, config.maxFileBytes), scan: new Scanner(trPaths) };
+      const trcPlugin = testRunPlugin();
+      await trcPlugin.init?.(trctx);
+      const trc = tool(trcPlugin, "test_run");
+      const trChanged = textOf(await trc.handler({ script: "t", changed: true }));
+      check(
+        "test_run changed selects changed + importing tests, excludes unrelated",
+        trChanged.includes("src/calc.test.ts") && trChanged.includes("src/util.test.ts") && !trChanged.includes("lonely.test.ts") && trChanged.includes("passed"),
+      );
+      // adversarial-review fix: an affected test with a shell-unsafe path is reported, never silently dropped
+      check(
+        "test_run changed reports shell-unsafe affected paths instead of dropping them silently",
+        trChanged.includes("NOT run") && trChanged.includes("calc$weird.test.ts"),
+      );
+      await g3(["add", "."]);
+      await g3(["commit", "-q", "-m", "commit changes"]);
+      const trNone = textOf(await trc.handler({ script: "t", changed: true }));
+      check("test_run changed reports nothing when the tree is clean", trNone.includes("no uncommitted changes"));
+
+      // F5: the no-HEAD (fresh repo, no commits) path selects untracked affected tests
+      const freshRoot = await mkTmp("efficient-token-git-fresh-");
+      const gf = (a: string[]): Promise<unknown> => execFileP("git", a, { cwd: freshRoot });
+      await gf(["init", "-q"]);
+      await gf(["config", "user.email", "t@example.com"]);
+      await gf(["config", "user.name", "Test"]);
+      await fsp.writeFile(path.join(freshRoot, "package.json"), JSON.stringify({ name: "t", version: "1.0.0", scripts: { t: 'node -e "process.exit(0)"' } }));
+      await fsp.mkdir(path.join(freshRoot, "src"), { recursive: true });
+      await fsp.writeFile(path.join(freshRoot, "src", "x.ts"), "export function x() {\n  return 1;\n}\n");
+      await fsp.writeFile(path.join(freshRoot, "src", "x.test.ts"), "import { x } from './x.js';\nit('x', () => { x(); });\n");
+      const freshPaths = new PathSandbox(freshRoot);
+      const freshCtx: CoreContext = { ...ctx, config: { ...config, root: freshRoot }, paths: freshPaths, fs: new SafeFs(freshPaths, config.maxFileBytes), scan: new Scanner(freshPaths) };
+      const trFreshPlugin = testRunPlugin();
+      await trFreshPlugin.init?.(freshCtx);
+      const trFresh = textOf(await tool(trFreshPlugin, "test_run").handler({ script: "t", changed: true }));
+      check("test_run changed selects affected tests in a fresh repo (no HEAD)", trFresh.includes("src/x.test.ts") && trFresh.includes("passed"));
+      // parsePorcelain: status-code slice + rename arrow extraction
+      check(
+        "parsePorcelain extracts paths including renames",
+        JSON.stringify(parsePorcelain(" M src/a.ts\nA  src/b.ts\n?? src/c.ts\nR  old.ts -> new.ts\n")) === JSON.stringify(["src/a.ts", "src/b.ts", "src/c.ts", "new.ts"]),
+      );
 
       // review_branch: map changes to symbols
       await fsp.writeFile(path.join(gitRoot, "mod.ts"), "export function alpha() {\n  return 1;\n}\nexport function beta() {\n  return 2;\n}\n");
@@ -1382,6 +1847,18 @@ async function main(): Promise<void> {
       const unsafe = await cc.handler({ script: "a b; rm -rf /" });
       check("code_check rejects unsafe script name", unsafe.isError === true && textOf(unsafe).includes("invalid script name"));
 
+      // F6: apply_patch can run a package.json check after applying, riding the result
+      const apChk = applyPatchPlugin();
+      await apChk.init?.(cctx);
+      const ap6 = tool(apChk, "apply_patch");
+      await cctx.fs.writeAtomic("patchme.txt", "alpha\n");
+      const apOk = await ap6.handler({ edits: [{ file_path: "patchme.txt", old_string: "alpha", new_string: "beta" }], check: "ok" });
+      check("apply_patch runs a passing post-edit check", !apOk.isError && textOf(apOk).includes("Applied 1") && textOf(apOk).includes("post-edit check") && textOf(apOk).includes("✓ ok: passed"));
+      const apBad = await ap6.handler({ edits: [{ file_path: "patchme.txt", old_string: "beta", new_string: "gamma" }], check: "bad" });
+      check("apply_patch reports a failing check but still applies", !apBad.isError && (await cctx.fs.read("patchme.txt")).content === "gamma\n" && textOf(apBad).includes("✗ bad: FAILED"));
+      const apBadName = await ap6.handler({ edits: [{ file_path: "patchme.txt", old_string: "gamma", new_string: "delta" }], check: "nope" });
+      check("apply_patch with an unknown check still applies and notes it", !apBadName.isError && (await cctx.fs.read("patchme.txt")).content === "delta\n" && textOf(apBadName).includes("no npm script"));
+
       const t0 = Date.now();
       const timed = await cc.handler({ script: "sleep", timeoutMs: 800 });
       check(
@@ -1427,7 +1904,8 @@ async function main(): Promise<void> {
       sav.calls > 0 && sav.savedTokens > 0 && sav.returnedTokens <= sav.baselineTokens, JSON.stringify(sav));
     const healthPl = healthPlugin();
     await healthPl.init?.(ctx);
-    check("health reports session savings", textOf(await tool(healthPl, "health").handler({})).includes("savings this session"));
+    const hpText = textOf(await tool(healthPl, "health").handler({}));
+    check("health reports session savings", hpText.includes("savings this session") && hpText.includes("passed ~") && hpText.includes("to Claude"));
 
     // --- loader group gate ----------------------------------------------
     const reg1: string[] = [];

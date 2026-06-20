@@ -19,7 +19,7 @@ export function importMapPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "import-map",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;

@@ -15,7 +15,7 @@ export function codeEditPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-edit",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -25,7 +25,7 @@ export function codeEditPlugin(): Plugin {
         name: "code_edit",
         title: "Edit code",
         description:
-          "Exact find-and-replace in a file, matching Claude's Edit (same file_path/old_string/new_string/replace_all). old_string must match verbatim, including whitespace, and be unique unless replace_all=true. Refuses missing or ambiguous matches, writes atomically, and refuses an edit that would introduce an unclosed token (validate=false to override). For a full create or overwrite use code_write.",
+          "Use INSTEAD of the built-in Edit tool — same exact find-and-replace, with a syntax guard. Matches Claude's Edit (same file_path/old_string/new_string/replace_all). old_string must match verbatim, including whitespace, and be unique unless replace_all=true. Refuses missing or ambiguous matches, writes atomically, and refuses an edit that would introduce an unclosed token (validate=false to override). For a full create or overwrite use code_write.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,

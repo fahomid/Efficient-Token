@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { applyStringEdit, editFailureMessage } from "../../core/edits.js";
 import { errMessage, fail, ok } from "../../core/result.js";
+import { runProjectScript } from "../../core/scripts.js";
 import { formatSyntaxIssues } from "../../services/ast.js";
 
 interface WorkFile {
@@ -25,7 +26,7 @@ export function applyPatchPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "apply-patch",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -35,7 +36,7 @@ export function applyPatchPlugin(): Plugin {
         name: "apply_patch",
         title: "Apply a patch",
         description:
-          "Apply a batch of exact find-and-replace edits across one or more files in one atomic, all-or-nothing call. Each edit: { path, oldString (verbatim, unique unless replaceAll), newString, replaceAll? }. Multiple edits to the same file apply in order. If any edit fails to match or would introduce a syntax error, nothing is written. Use this instead of many code_edit calls for multi-file changes.",
+          "Use INSTEAD of multiple built-in Edit/Write calls — apply a batch of exact find-and-replace edits across one or more files in one atomic, all-or-nothing call. Each edit: { path, oldString (verbatim, unique unless replaceAll), newString, replaceAll? }. Multiple edits to the same file apply in order. If any edit fails to match or would introduce a syntax error, nothing is written. Prefer this over many code_edit calls for multi-file changes.",
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -58,6 +59,10 @@ export function applyPatchPlugin(): Plugin {
             .boolean()
             .optional()
             .describe("Reject the whole batch if any file would gain a syntax error (default true)."),
+          check: z
+            .string()
+            .optional()
+            .describe('After the patch applies, run this package.json script (e.g. "typecheck" or "lint") and append its result (failures-only), instead of a separate run.'),
         },
         handler: async (args) => {
           try {
@@ -134,9 +139,18 @@ export function applyPatchPlugin(): Plugin {
             const changed = order.map((key) => work.get(key)!).filter((w) => w.current !== w.original);
             const totalEdits = changed.reduce((a, w) => a + w.replacements, 0);
             const summary = changed.map((w) => `  ${w.rel}: ${w.replacements} replacement(s)`).join("\n");
-            return ok(
-              `Applied ${totalEdits} replacement(s) across ${changed.length} file(s):\n${summary || "  (no net change)"}`,
-            );
+            let body = `Applied ${totalEdits} replacement(s) across ${changed.length} file(s):\n${summary || "  (no net change)"}`;
+
+            // Optional post-edit check: run an allowlisted script and append its
+            // result so the analyze step rides on the edit instead of a separate
+            // call. The patch already succeeded, so a failing check does not make
+            // this an error — it is reported for the model to act on.
+            const check = args.check === undefined ? "" : String(args.check).trim();
+            if (check !== "") {
+              const outcome = await runProjectScript(ctx, check);
+              body += `\n\npost-edit check:\n${outcome.text}`;
+            }
+            return ok(body);
           } catch (err) {
             return fail(`apply_patch failed: ${errMessage(err)}`);
           }

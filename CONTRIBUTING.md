@@ -79,6 +79,48 @@ summarizing) · smoke test added · README tool-table entry · `npm test` is gre
 - Update `CHANGELOG.md` under `## [Unreleased]`.
 - Describe what changed and why; note any new env vars or behavior.
 
+## Releasing
+
+Publishing to npm is automated: pushing a `v*` tag triggers the
+[release workflow](./.github/workflows/release.yml), which verifies the tag matches
+`package.json`, builds, runs the tests, publishes to npm with provenance, and creates
+the GitHub Release. To cut a release:
+
+1. **Bump the version.** Update `version` in `package.json`. The same string also
+   lives in `src/version.ts` (the `VERSION` constant — the single source for the
+   server, `health`, and `status` output) and in each plugin's `version` field; keep
+   them in sync. A find-and-replace of the old version across `src` and `package.json`
+   handles them all:
+
+   ```bash
+   # Linux (GNU sed): bump 1.0.4 -> 1.0.5
+   grep -rl '1\.0\.4' src package.json | xargs sed -i 's/1\.0\.4/1.0.5/g'
+   ```
+   ```powershell
+   # Windows PowerShell
+   $old = '1.0.4'; $new = '1.0.5'
+   @(Get-ChildItem -Recurse src -Filter *.ts) + (Get-Item package.json) |
+     ForEach-Object { (Get-Content $_.FullName -Raw).Replace($old, $new) |
+       Set-Content -NoNewline $_.FullName }
+   ```
+
+2. **Update [`CHANGELOG.md`](./CHANGELOG.md).** Add a dated section for the new
+   version ([Keep a Changelog](https://keepachangelog.com) format) and a link
+   reference at the bottom.
+
+3. **Commit, then tag and push:**
+
+   ```bash
+   git commit -am "chore(release): 1.0.5"
+   git tag -a v1.0.5 -m "efficient-token v1.0.5"
+   git push origin main --follow-tags
+   ```
+
+Follow [semantic versioning](https://semver.org): **patch** for fixes, **minor** for
+new tools or backward-compatible features, **major** for breaking changes. If the tag
+and `package.json` disagree, the release fails its check before publishing — so a
+mistake never ships.
+
 ## Reporting bugs / security issues
 
 Open a [GitHub issue](https://github.com/fahomid/Efficient-Token/issues) for

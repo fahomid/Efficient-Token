@@ -26,7 +26,7 @@ export interface LocateOptions {
  * marked `›`) plus its enclosing symbol. Sandbox-confined, deduplicated,
  * bounded, and ReDoS-safe. Shared by `check_locate` and `trace_locate`.
  */
-export async function locateInText(ctx: CoreContext, text: string, opts: LocateOptions = {}): Promise<string[]> {
+export async function locateInText(ctx: CoreContext, text: string, opts: LocateOptions = {}): Promise<{ blocks: string[]; capped: boolean }> {
   const max = opts.max ?? 5;
   const context = opts.context ?? 3;
   const maxScanLines = opts.maxScanLines ?? 500;
@@ -37,12 +37,14 @@ export async function locateInText(ctx: CoreContext, text: string, opts: LocateO
 
   const seen = new Set<string>();
   const blocks: string[] = [];
+  let capped = false;
   for (const line of scan) {
-    if (blocks.length >= max) break;
+    if (blocks.length >= max) { capped = true; break; }
     if (line.length > MAX_LINE_LEN) continue;
     LOCATION_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = LOCATION_RE.exec(line)) !== null && blocks.length < max) {
+    while ((m = LOCATION_RE.exec(line)) !== null) {
+      if (blocks.length >= max) { capped = true; break; }
       const rawPath = m[1]!;
       const lineNo = Number(m[2]);
       const base = rawPath.replace(/\\/g, "/").split("/").pop() ?? "";
@@ -60,7 +62,12 @@ export async function locateInText(ctx: CoreContext, text: string, opts: LocateO
       seen.add(key);
 
       const lines = splitLines(content);
-      if (lineNo < 1 || lineNo > lines.length) continue;
+      if (lineNo < 1 || lineNo > lines.length) {
+        // Resolved, but the line no longer exists (the file changed since the log).
+        // Disclose it rather than silently dropping the frame.
+        blocks.push(`${rel}:${lineNo}  (line out of range — file now has ${lines.length} line(s); it may have changed since)`);
+        continue;
+      }
       const sym = ctx.ast.supports(rel) ? enclosingSymbol((await ctx.ast.outline(rel, content)) ?? [], lineNo) : undefined;
       const where = sym ? `  (in ${sym.kind} ${sym.container ? `${sym.container}.` : ""}${sym.name})` : "";
       const from = Math.max(1, lineNo - context);
@@ -74,7 +81,7 @@ export async function locateInText(ctx: CoreContext, text: string, opts: LocateO
       blocks.push(`${rel}:${lineNo}${where}\n${body.join("\n")}`);
     }
   }
-  return blocks;
+  return { blocks, capped };
 }
 
 async function readText(ctx: CoreContext, rel: string): Promise<string | undefined> {

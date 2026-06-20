@@ -365,11 +365,12 @@ So shipping premium needs no change to the core: implement the real
   noting extra matches if any.
 - **Mode range**: clamp to file bounds, return the numbered slice.
 - **Mode whole-file**: if `fits(content, maxTokens ?? config.maxReadTokens)`,
-  return the numbered file; otherwise degrade by returning the outline plus a
-  bounded head (up to 40 lines, each capped to about 400 code points, total within
-  about maxTokens) plus an instruction to request a specific symbol or range. A
-  file over budget is never silently dumped; the head is bounded by size too, so a
-  single huge line (minified JS/CSS, one-line JSON) cannot blow the budget.
+  return the numbered file; otherwise degrade like the built-in `Read` by returning
+  the first page of real content (lines from 1, bounded to about `maxTokens`, each
+  line capped to about 2000 code points like `Read`) plus how to continue
+  (`offset=…`, raise `maxTokens`, or `code_outline` for a symbol map). A file over
+  budget is never silently dumped; the page is bounded by size too, so a single huge
+  line (minified JS/CSS, one-line JSON) cannot blow the budget.
 - Lines are split with `splitLines()` (which handles `\r\n`/`\r`/`\n` and strips
   one trailing terminator, so there is no stray `\r` and no phantom empty last line
   or off-by-one in the `of N` counts).

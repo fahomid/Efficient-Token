@@ -28,7 +28,7 @@ export function codeContextPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-context",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -93,7 +93,8 @@ export function codeContextPlugin(): Plugin {
             }
 
             if (targets.length === 0) {
-              const head = `code_context: no definition of "${symbol}" found in the workspace.`;
+              const inc = scan.truncated ? `\n[scan incomplete — over ${MAX_SCAN_FILES} files; it may be defined in an unscanned file — narrow with path/glob/type]` : "";
+              const head = `code_context: no definition of "${symbol}" found in the workspace.${inc}`;
               const body = refs.length ? `\n\nReferenced from (${refTotal}):\n${refs.join("\n")}` : "";
               return ok(head + body);
             }
@@ -115,13 +116,14 @@ export function codeContextPlugin(): Plugin {
             const bodyText = lines.slice(start - 1, endFull).join("\n");
             const seen = new Set<string>();
             const deps: string[] = [];
+            let depTotal = 0;
             for (const id of bodyText.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? []) {
               if (id === symbol || seen.has(id)) continue;
               seen.add(id);
               const d = index.get(id);
               if (!d) continue;
-              deps.push(`  ${d.sym.kind} ${id} — ${truncate(d.sym.signature, 120)}  (${d.rel}:${d.sym.startLine})`);
-              if (deps.length >= MAX_DEPS) break;
+              depTotal++;
+              if (deps.length < MAX_DEPS) deps.push(`  ${d.sym.kind} ${id} — ${truncate(d.sym.signature, 120)}  (${d.rel}:${d.sym.startLine})`);
             }
 
             const container = target.sym.container ? `${target.sym.container}.` : "";
@@ -132,16 +134,26 @@ export function codeContextPlugin(): Plugin {
               `Definition — ${target.sym.kind} ${container}${symbol} (${target.rel}:${start}-${endFull}):`,
               defSlice + defTrunc,
             ];
-            if (deps.length) sections.push("", `Uses (workspace symbols, ${deps.length}):`, deps.join("\n"));
+            const usesHeader = `Uses (workspace symbols, ${depTotal}${depTotal > deps.length ? "+" : ""}):`;
+            if (deps.length) sections.push("", usesHeader, deps.join("\n"));
             if (refs.length) sections.push("", `Referenced from (${refTotal}):`, refs.join("\n"));
+            if (scan.truncated) sections.push("", `[workspace scan truncated at ${MAX_SCAN_FILES} files — uses/references may be incomplete; narrow with path/glob/type]`);
 
-            // Bound the whole pack: drop references, then deps, if over budget.
+            // Bound the whole pack: drop references, then trim deps, if over budget.
             let outText = sections.join("\n");
             const budget = maxTokens * 4;
             if (outText.length > budget && refs.length) {
               sections.splice(sections.indexOf(`Referenced from (${refTotal}):`) - 1, 3);
               sections.push("", `Referenced from (${refTotal}): [omitted — over budget; use find_references]`);
               outText = sections.join("\n");
+            }
+            if (outText.length > budget && deps.length) {
+              const di = sections.indexOf(usesHeader);
+              if (di > 0) {
+                sections.splice(di - 1, 3);
+                sections.push("", `${usesHeader} [omitted — over budget; use find_references]`);
+                outText = sections.join("\n");
+              }
             }
             return ok(outText);
           } catch (err) {

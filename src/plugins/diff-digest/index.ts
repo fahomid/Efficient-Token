@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { gitOk, isSafeRef, runGit } from "../../core/git.js";
 import { errMessage, fail, ok } from "../../core/result.js";
+import { buildGenMatch } from "../../services/scan.js";
 
 /**
  * Summarizes git changes as just the changed hunks (or a `--stat` summary or
@@ -13,7 +14,7 @@ export function diffDigestPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "diff-digest",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -31,6 +32,7 @@ export function diffDigestPlugin(): Plugin {
           path: z.string().optional().describe("Limit the diff to this path (relative to the workspace)."),
           outputMode: z.enum(["digest", "stat", "files"]).optional().describe('"digest" hunks (default) | "stat" summary | "files" name-status list.'),
           context: z.number().int().min(0).optional().describe("Hunk context lines (default 3)."),
+          includeGenerated: z.boolean().optional().describe("Include generated files (e.g. *.min.js, *.g.dart). Default false: excluded from the diff and counted."),
           maxTokens: z.number().int().positive().optional().describe("Output token budget."),
         },
         handler: async (args) => {
@@ -48,25 +50,42 @@ export function diffDigestPlugin(): Plugin {
             if (!(await gitOk(root, ["rev-parse", "--is-inside-work-tree"]))) {
               return fail("not a git repository (or git is unavailable) at the workspace root.");
             }
+            const includeGenerated = args.includeGenerated === true;
+            const hasHead = await gitOk(root, ["rev-parse", "--verify", "--quiet", "HEAD"]);
+            // The ref/range the diff compares against; shared by the file list and diff.
+            const compareRef = ref !== undefined ? ref : !staged && hasHead ? "HEAD" : undefined;
+            if (args.path !== undefined) ctx.paths.resolve(String(args.path)); // sandbox check (throws if escaping)
+
+            // Hide generated files by listing the changed set and excluding the
+            // generated ones with exact-path pathspecs — works for every mode.
+            let excluded: string[] = [];
+            if (!includeGenerated) {
+              const nameArgs = ["-c", "core.quotePath=false", "diff", "--name-only"];
+              if (staged) nameArgs.push("--cached");
+              if (compareRef !== undefined) nameArgs.push(compareRef);
+              if (args.path !== undefined) nameArgs.push("--", String(args.path));
+              const names = (await runGit(root, nameArgs)).split("\n").map((s) => s.trim()).filter(Boolean);
+              const isGen = buildGenMatch(ctx.config.generatedGlobs);
+              excluded = names.filter((n) => isGen(n));
+            }
+            const hiddenLine =
+              excluded.length > 0 ? `\n[${excluded.length} generated file(s) hidden — set includeGenerated:true to include]` : "";
 
             const dargs = ["diff"];
             if (staged) dargs.push("--cached");
             if (mode === "stat") dargs.push("--stat");
             else if (mode === "files") dargs.push("--name-status");
             else dargs.push(`-U${context}`);
-            if (ref !== undefined) {
-              dargs.push(ref);
-            } else if (!staged && (await gitOk(root, ["rev-parse", "--verify", "--quiet", "HEAD"]))) {
-              dargs.push("HEAD");
-            }
-            if (args.path !== undefined) {
-              ctx.paths.resolve(String(args.path)); // sandbox check (throws if escaping)
-              dargs.push("--", String(args.path));
-            }
+            if (compareRef !== undefined) dargs.push(compareRef);
+            const pathspec: string[] = [];
+            if (args.path !== undefined) pathspec.push(String(args.path));
+            for (const g of excluded) pathspec.push(`:(exclude)${g}`);
+            if (pathspec.length > 0) dargs.push("--", ...pathspec);
 
             const stdout = await runGit(root, dargs);
             if (stdout.trim() === "") {
-              return ok(`No ${staged ? "staged " : ""}changes${ref ? ` vs ${ref}` : ""}.`);
+              const note = excluded.length > 0 ? ` (${excluded.length} generated file(s) hidden — includeGenerated:true to show)` : "";
+              return ok(`No ${staged ? "staged " : ""}changes${ref ? ` vs ${ref}` : ""}${note}.`);
             }
 
             const budgetChars = maxTokens * 4;
@@ -74,10 +93,10 @@ export function diffDigestPlugin(): Plugin {
               const cut = stdout.lastIndexOf("\n", budgetChars);
               return ok(
                 stdout.slice(0, cut > 0 ? cut : budgetChars) +
-                  `\n[diff truncated at ~${maxTokens} tokens — narrow with path, or use outputMode=stat/files]`,
+                  `\n[diff truncated at ~${maxTokens} tokens — narrow with path, or use outputMode=stat/files]${hiddenLine}`,
               );
             }
-            return ok(stdout);
+            return ok(stdout + hiddenLine);
           } catch (err) {
             return fail(`diff_digest failed: ${errMessage(err)}`);
           }

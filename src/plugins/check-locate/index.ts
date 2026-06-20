@@ -20,7 +20,7 @@ export function checkLocatePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "check-locate",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -63,10 +63,10 @@ export function checkLocatePlugin(): Plugin {
             if (run.timedOut) return fail(`${script}: timed out after ${timeoutMs}ms (process tree killed).`);
             if (run.code === 0) return ok(`✓ ${script}: passed (exit 0, ${secs}s)`);
 
-            const locations = await locateInText(ctx, run.output, { max: maxLocations, context });
+            const { blocks: locations, capped } = await locateInText(ctx, run.output, { max: maxLocations, context });
             const parts = [`✗ ${script}: FAILED (exit ${run.code}, ${secs}s)`];
             if (locations.length > 0) {
-              parts.push("", `Error locations (${locations.length}):`, locations.join("\n\n"));
+              parts.push("", `Error locations (${locations.length}${capped ? "+, more in the output below" : ""}):`, locations.join("\n\n"));
             }
             parts.push("", "Output (tail):", boundedTail(run.output, maxTokens));
             return ok(parts.join("\n"));

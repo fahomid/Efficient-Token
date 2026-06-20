@@ -1,6 +1,6 @@
 {
   "name": "efficient-token",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Local-first MCP server that returns distilled, faithful code context to cut LLM token usage without degrading reasoning.",
   "keywords": [
     "mcp",
@@ -44,6 +44,7 @@
     "smoke": "node --liftoff-only --wasm-num-compilation-tasks=1 --wasm-lazy-validation --import tsx scripts/smoke.ts",
     "e2e": "tsx scripts/e2e.ts",
     "health": "tsx scripts/health.ts",
+    "status": "tsx src/index.ts status",
     "discover": "tsx scripts/discover.ts",
     "toolcost": "tsx scripts/toolcost.ts",
     "test": "npm run smoke && npm run e2e",

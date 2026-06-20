@@ -20,7 +20,7 @@ export function changeCoveragePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "change-coverage",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -95,7 +95,7 @@ export function changeCoveragePlugin(): Plugin {
                 used += block.length;
                 continue;
               }
-              const changed = changedLineSet(fileRanges);
+              const { set: changed, capped: lineSetCapped } = changedLineSet(fileRanges);
               const execChanged: number[] = [];
               const uncovered: number[] = [];
               for (const L of changed) {
@@ -116,7 +116,7 @@ export function changeCoveragePlugin(): Plugin {
               uncovered.sort((a, b) => a - b);
 
               const outline = ctx.ast.supports(rel) ? (await safeOutline(ctx, rel)) : [];
-              const head = `\n${rel}: ${execChanged.length - uncovered.length}/${execChanged.length} changed lines covered`;
+              const head = `\n${rel}: ${execChanged.length - uncovered.length}/${execChanged.length} changed lines covered${lineSetCapped ? " [changed-line set capped at 100k — coverage intersection is partial]" : ""}`;
               const detail = uncovered.length === 0
                 ? "\n  ✓ all changed lines covered"
                 : "\n" + uncovered.map((L) => {

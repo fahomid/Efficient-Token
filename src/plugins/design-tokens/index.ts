@@ -29,7 +29,7 @@ export function designTokensPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "design-tokens",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     group: "design",
     init(c) {
@@ -52,14 +52,16 @@ export function designTokensPlugin(): Plugin {
             const category = (args.category as string | undefined) ?? "all";
             const maxTokens = args.maxTokens === undefined ? ctx.config.maxReadTokens : Number(args.maxTokens);
 
-            const files = args.paths !== undefined ? (args.paths as unknown[]).map(String) : await discover(ctx);
+            const disc = args.paths !== undefined ? undefined : await discover(ctx);
+            const files = args.paths !== undefined ? (args.paths as unknown[]).map(String) : disc!.files;
             if (files.length === 0) {
               return ok("No design-token sources found (looked for .css and token/theme .json). Pass paths to target specific files.");
             }
 
             const tokens: Token[] = [];
+            let collectionCapped = false;
             for (const f of files) {
-              if (tokens.length > MAX_TOKENS_OUT) break;
+              if (tokens.length > MAX_TOKENS_OUT) { collectionCapped = true; break; }
               let content: string;
               let rel: string;
               try {
@@ -75,7 +77,7 @@ export function designTokensPlugin(): Plugin {
 
             const wanted = category === "all" ? tokens : tokens.filter((t) => t.category === category);
             if (wanted.length === 0) {
-              return ok(`No ${category === "all" ? "" : `${category} `}tokens found in ${files.length} file(s).`);
+              return ok(`No ${category === "all" ? "" : `${category} `}tokens found in ${files.length} file(s)${disc?.truncated ? ` (source scan truncated at ${MAX_SCAN_FILES} files — pass paths)` : ""}.`);
             }
 
             const budgetChars = maxTokens * 4;
@@ -104,7 +106,11 @@ export function designTokensPlugin(): Plugin {
               }
               if (truncated) break;
             }
-            return ok(out.join("\n") + (truncated ? "\n[truncated — filter with category/paths or raise maxTokens]" : ""));
+            const notes: string[] = [];
+            if (truncated) notes.push("output truncated — filter with category/paths or raise maxTokens");
+            if (collectionCapped) notes.push(`token collection capped at ${MAX_TOKENS_OUT} — pass paths to target specific files`);
+            if (disc?.truncated) notes.push(`source scan truncated at ${MAX_SCAN_FILES} files — pass paths`);
+            return ok(out.join("\n") + (notes.length ? `\n[${notes.join("; ")}]` : ""));
           } catch (err) {
             return fail(`design_tokens failed: ${errMessage(err)}`);
           }
@@ -114,11 +120,11 @@ export function designTokensPlugin(): Plugin {
   };
 }
 
-async function discover(ctx: CoreContext): Promise<string[]> {
+async function discover(ctx: CoreContext): Promise<{ files: string[]; truncated: boolean }> {
   const css = await ctx.scan.files({ exts: ["css"], maxFiles: MAX_SCAN_FILES });
   const json = await ctx.scan.files({ exts: ["json"], maxFiles: MAX_SCAN_FILES });
   const tokenJson = json.files.filter((f) => /token|theme|design/i.test(f.rel.split("/").pop() ?? ""));
-  return [...css.files, ...tokenJson].map((f) => f.rel);
+  return { files: [...css.files, ...tokenJson].map((f) => f.rel), truncated: css.truncated || json.truncated };
 }
 
 function extractCss(content: string, source: string, out: Token[]): void {
@@ -146,7 +152,13 @@ function extractJson(content: string, source: string, out: Token[]): void {
 
 function flatten(node: unknown, prefix: string, source: string, out: Token[], depth: number): void {
   if (depth > 12 || out.length > MAX_TOKENS_OUT) return;
-  if (node !== null && typeof node === "object" && !Array.isArray(node)) {
+  if (Array.isArray(node)) {
+    // Descend into arrays with indexed names (e.g. a font-stack list) rather than
+    // silently dropping their values.
+    node.forEach((el, i) => flatten(el, prefix ? `${prefix}-${i}` : String(i), source, out, depth + 1));
+    return;
+  }
+  if (node !== null && typeof node === "object") {
     const obj = node as Record<string, unknown>;
     // W3C / Style Dictionary leaf: { $value | value: <primitive> }
     const leaf = obj.$value ?? obj.value;

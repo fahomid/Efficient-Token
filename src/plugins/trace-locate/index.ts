@@ -17,7 +17,7 @@ export function traceLocatePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "trace-locate",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -40,11 +40,12 @@ export function traceLocatePlugin(): Plugin {
             const max = Math.min(args.maxFrames === undefined ? DEFAULT_FRAMES : Number(args.maxFrames), MAX_FRAMES);
             const context = args.context === undefined ? 3 : Number(args.context);
 
-            const blocks = await locateInText(ctx, trace, { max, context, fromEnd: false, maxScanLines: 2000 });
+            const { blocks, capped } = await locateInText(ctx, trace, { max, context, fromEnd: false, maxScanLines: 2000 });
             if (blocks.length === 0) {
               return ok("No workspace source locations found in the trace (frames may all be external, or paths don't match the workspace).");
             }
-            return ok(`trace_locate — ${blocks.length} frame(s) resolved:\n\n${blocks.join("\n\n")}`);
+            const note = capped ? `\n\n[showing the first ${blocks.length} frame(s) — raise maxFrames for more]` : "";
+            return ok(`trace_locate — ${blocks.length}${capped ? "+" : ""} frame(s) resolved:\n\n${blocks.join("\n\n")}${note}`);
           } catch (err) {
             return fail(`trace_locate failed: ${errMessage(err)}`);
           }

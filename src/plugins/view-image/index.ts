@@ -29,7 +29,7 @@ export function viewImagePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "view-image",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;

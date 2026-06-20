@@ -2,11 +2,10 @@ import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
 import { errMessage, fail, ok } from "../../core/result.js";
-import { boundedTail, runNpmScript } from "../../core/run-script.js";
+import { DEFAULT_CHECK_TIMEOUT_MS, MAX_CHECK_TIMEOUT_MS, runProjectScript } from "../../core/scripts.js";
 
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_TIMEOUT_MS = 300_000;
-const SAFE_SCRIPT = /^[A-Za-z0-9:._-]+$/;
+const DEFAULT_TIMEOUT_MS = DEFAULT_CHECK_TIMEOUT_MS;
+const MAX_TIMEOUT_MS = MAX_CHECK_TIMEOUT_MS;
 
 /**
  * Run one of the project's own npm scripts (build/test/lint/typecheck) and
@@ -21,7 +20,7 @@ export function codeCheckPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-check",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -40,43 +39,11 @@ export function codeCheckPlugin(): Plugin {
         },
         handler: async (args) => {
           try {
-            const script = String(args.script);
-            if (!SAFE_SCRIPT.test(script)) {
-              return fail(`invalid script name: ${JSON.stringify(script)} (allowed: letters, digits, : . _ -).`);
-            }
-            const maxTokens = args.maxTokens === undefined ? ctx.config.maxReadTokens : Number(args.maxTokens);
-            const timeoutMs = Math.min(
-              args.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : Number(args.timeoutMs),
-              MAX_TIMEOUT_MS,
-            );
-
-            const scripts = await readScripts(ctx);
-            if (scripts === undefined) {
-              return fail("no package.json with a \"scripts\" section at the workspace root.");
-            }
-            if (!Object.prototype.hasOwnProperty.call(scripts, script)) {
-              const names = Object.keys(scripts);
-              return fail(
-                `no npm script "${script}". Available: ${names.length ? names.join(", ") : "(none)"}.`,
-              );
-            }
-
-            const started = Date.now();
-            const run = await runNpmScript(ctx.config.root, script, timeoutMs);
-            const secs = ((Date.now() - started) / 1000).toFixed(1);
-
-            if (run.notFound) return fail("npm was not found on PATH.");
-            if (run.timedOut) {
-              return fail(`${script}: timed out after ${timeoutMs}ms (process tree killed).`);
-            }
-            const code = run.code;
-            const combined = run.output;
-            if (code === 0) {
-              return ok(`✓ ${script}: passed (exit 0, ${secs}s)`);
-            }
-            return ok(
-              `✗ ${script}: FAILED (exit ${code}, ${secs}s)\n\n${boundedTail(combined, maxTokens)}`,
-            );
+            const outcome = await runProjectScript(ctx, String(args.script), {
+              maxTokens: args.maxTokens === undefined ? undefined : Number(args.maxTokens),
+              timeoutMs: args.timeoutMs === undefined ? undefined : Number(args.timeoutMs),
+            });
+            return outcome.kind === "error" ? fail(outcome.text) : ok(outcome.text);
           } catch (err) {
             return fail(`code_check failed: ${errMessage(err)}`);
           }
@@ -84,18 +51,5 @@ export function codeCheckPlugin(): Plugin {
       },
     ],
   };
-}
-
-async function readScripts(ctx: CoreContext): Promise<Record<string, string> | undefined> {
-  try {
-    const { content } = await ctx.fs.read("package.json");
-    const pkg = JSON.parse(content) as { scripts?: unknown };
-    if (pkg.scripts && typeof pkg.scripts === "object") {
-      return pkg.scripts as Record<string, string>;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
 }
 

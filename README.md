@@ -12,7 +12,7 @@ It does deterministic code work on your machine and returns only distilled, *fai
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/fahomid)
 
-[Install](#install) · [Verify](#verify-it-works) · [Make Claude use it](#make-claude-prefer-these-tools) · [Tools](#tools) · [Measure savings](#measuring-token-savings) · [Releasing](#releasing)
+[Install](#install) · [Verify](#verify-it-works) · [Make Claude use it](#make-claude-prefer-these-tools) · [Tools](#tools) · [Measure savings](#measuring-token-savings)
 
 </div>
 
@@ -53,7 +53,6 @@ and the savings compound.
 - [Architecture](#architecture)
 - [Open-core / premium](#open-core--premium)
 - [Development](#development)
-- [Releasing](#releasing)
 - [Contributing & security](#contributing--security)
 - [License](#license)
 
@@ -61,7 +60,7 @@ and the savings compound.
 
 | | |
 | --- | --- |
-| **45 tools** | Reading, searching, git review, editing, and creative/design work — each returns the *real* content the model needs, just less of it. |
+| **47 tools** | Reading, searching, git review, editing, and creative/design work — each returns the *real* content the model needs, just less of it. |
 | **Drop-in built-ins** | `code_read`, `code_edit`, `code_write`, `code_search`, and `glob` mirror Read / Edit / Write / Grep / Glob (same inputs, same output shape) — the model swaps them in with no re-learning. |
 | **Measurable** | `health` shows tokens saved this session; `npm run toolcost` shows the fixed per-turn cost of the tool definitions. |
 | **Safe by construction** | Every path is confined to the workspace root (symlink- and ADS-safe), writes are atomic, edits are syntax-guarded, and the runner tools only execute scripts already in your `package.json`. |
@@ -124,6 +123,39 @@ It's a standard stdio MCP server. Point any host at the command
 
 </details>
 
+### Set it up (recommended)
+
+Registering the server is enough to *use* the tools. Two quick steps make Claude
+**prefer** them and let you **see the savings** in-session:
+
+**1 — Tell Claude to prefer the tools.** Add a short routing rule to your `CLAUDE.md`
+(`~/.claude/CLAUDE.md` for every project, or a project's `./CLAUDE.md`). The exact
+block to paste is in [Make Claude prefer these tools](#make-claude-prefer-these-tools).
+
+**2 — Install enforcement + the in-session status line.** From your project root:
+
+```bash
+npx efficient-token setup          # redirect hook + health status line (opt-in, fail-open)
+
+# variants:
+npx efficient-token setup --no-hook        # status line only (no enforcement)
+npx efficient-token setup --no-statusline  # enforcement hook only
+npx efficient-token setup --scope user     # apply to every project (~/.claude)
+npx efficient-token uninstall              # revert exactly what setup added
+
+# from a source checkout instead of npx:
+npm run setup                              # (or: node dist/index.js setup)
+```
+
+This redirects a stray `Bash` `grep`/`cat`/`find` to the MCP tools (fail-open — it
+never blocks when the server is down) and shows live token savings in your status
+bar with **no API call**. See [enforcement](#token-efficient-enforcement-opt-in)
+and the [status line](#health-in-the-status-line-no-api-call) for how each works.
+
+> Both are opt-in and fully reversible — nothing is written until you run `setup`,
+> and `uninstall` removes exactly what it added. **Restart the session** afterward so
+> Claude Code picks up the status line.
+
 ## Verify it works
 
 MCP servers load when the host session starts, so **start (or restart) a session**
@@ -139,29 +171,32 @@ after registering. To confirm it's connected:
   npx @modelcontextprotocol/inspector node dist/index.js
   ```
 
-`health` reports the workspace root, the limits, and the tokens saved so far:
+`health` reports the version, workspace root, limits, and the tokens saved so far:
 
 ```text
 efficient-token: ok
+version: 1.0.4
 tier: free
 root: /abs/path/to/your/project
 maxReadTokens: 6000
 maxFileBytes: 2000000
 savings this session (estimate):
-  this server returned ~0 tokens across 0 distilled read(s)
-  equivalent built-in whole-file reads would have cost ~0 tokens
-  net saved ~0 tokens (~0%)
+  efficient-token read ~0 tokens of source and passed ~0 to Claude — ~0% fewer (0 read(s))
+  saved ~0 tokens
 ```
 
 > The savings ledger is per server process, so `npm run health` (a fresh process)
-> always reads zero — it's a liveness/config check. To see a live session's
-> accumulated savings, ask the model to call `health` in that session.
+> always reads zero — it's a liveness/config check. To see a **live** session's
+> savings *without the model*, run `efficient-token status` (it reads the running
+> server's heartbeat) or wire up the
+> [status line](#health-in-the-status-line-no-api-call); or ask the model to call
+> `health` in that session.
 
 ## Make Claude prefer these tools
 
-Registering the server only puts these tools on the menu — the model still chooses
-per call, and it leans on the built-in `Read` / `Grep` / `Edit` out of habit. To
-make it **reach for efficient-token first**, add a short routing rule to your
+Registering the server already nudges the model toward these tools — it advertises
+the preference in its MCP `instructions` and in every drop-in tool's description.
+For a stronger, always-applied steer, add a short routing rule to your
 [`CLAUDE.md`](https://docs.anthropic.com/en/docs/claude-code/memory). Put it in
 `~/.claude/CLAUDE.md` to apply everywhere, or a project's `./CLAUDE.md` for that
 repo only:
@@ -180,16 +215,19 @@ when to use each. As a rule of thumb:
   `code_write` over `Write`.
 - **Understand code without reading whole files:** `code_outline`, `repo_map`,
   `code_context`, `find_references`, `symbol_find`, `call_hierarchy`, `call_sites`,
-  `import_map`, `type_closure`, `grep_context`, `marker_inventory`, `read_many`,
-  `json_query`.
+  `import_map`, `type_closure`, `grep_context`, `marker_inventory`, `read_many`
+  (now reads several symbols at once and a symbol with its callees), `json_query`,
+  `json_get` (a key plus its sibling metadata).
 - **Review changes and history:** `diff_digest`, `review_branch`, `outline_diff`,
   `commit_log`, `line_blame`, `symbol_history`, `read_at_rev`, `conflict_digest`,
   `change_coverage` — instead of reading changed files or parsing raw `git`.
 - **Run checks and chase failures:** `code_check`, `test_run`, `check_locate`,
   `trace_locate` (run allowlisted package.json scripts; failures-only output).
-- **Edit precisely:** `apply_patch` for multi-file edits, `replace_symbol` to
-  rewrite a whole definition, `move_symbol`, `project_rename`; `note_write` /
-  `note_read` to persist findings across steps.
+- **Edit precisely:** `apply_patch` for multi-file edits (optionally running a
+  package.json check after), `json_set` to insert/update a key in a large JSON
+  bundle without rewriting it, `replace_symbol` to rewrite a whole definition,
+  `move_symbol`, `project_rename`; `note_write` / `note_read` to persist findings
+  across steps.
 - **Inspect images, design, and media:** `view_image`, `media_info`,
   `color_contrast`, `design_tokens`, `font_info`, `svg_digest`, `token_usage`.
 
@@ -201,11 +239,91 @@ Don't feel obliged to copy the whole list: the opening paragraph plus the first
 bullet (the built-in overrides) is enough on its own — the model discovers the
 rest from the tool descriptions, which load every turn regardless.
 
-> **Want hard enforcement?** A soft steer is usually enough. To *force* the routing,
-> use a Claude Code [`PreToolUse` hook](https://docs.anthropic.com/en/docs/claude-code/hooks)
-> that redirects `Read` / `Grep` / `Edit` to the MCP equivalents, or deny the
-> built-ins in `settings.json` (bluntest; it also blocks image/PDF/notebook reads,
-> so keep an exception for those).
+### Token-efficient enforcement (opt-in)
+
+The soft steer above is usually enough. For **hard, automatic enforcement** — so a
+stray `Bash` `grep` / `cat` / `find` is actively redirected to the MCP tool — the
+server ships an opt-in setup that installs a Claude Code [`PreToolUse`
+hook](https://docs.anthropic.com/en/docs/claude-code/hooks). It is **fail-open**:
+if the server isn't running, isn't installed, or anything errors, your built-in
+tools work exactly as normal — nothing is ever blocked.
+
+```bash
+# run from your project root — installs BOTH the redirect hook and the status line
+npx efficient-token setup       # or: node /abs/path/to/dist/index.js setup
+npx efficient-token uninstall   # removes exactly what setup added
+# --scope user      target ~/.claude/settings.json instead of the project
+# --no-hook         install only the status line   ·   --no-statusline   only the hook
+```
+
+`setup` writes `.claude/settings.local.json` (git-ignored by default), a redirect
+hook at `.claude/hooks/efficient-token-redirect.mjs`, and a status-line script at
+`.claude/hooks/efficient-token-status.mjs`. It sets the `statusLine` only when you
+don't already have one — it never clobbers yours.
+
+**How it works.** While the server runs it touches `.claude/.efficient-token.alive`
+every 30 seconds. The hook checks that heartbeat on every `Bash` call: **only when
+it is fresh** does it deny a *bare, read-only* drainer — a command whose first word
+is `grep`/`rg`, `cat`/`head`/`tail`/`sed`, or `find`/`ls`, with no pipe, chain,
+redirect, or write flag — and tell the model to use `code_search` / `code_read` /
+`glob` instead. Everything else is allowed: a pipeline or chain (so `npm test |
+grep`, `git log | head` run untouched), a mutation (`sed -i`, `find -delete`,
+`cat > f`), a stale/missing heartbeat, unparseable input, or any command without an
+MCP equivalent. `flutter test`, `git …`, and package managers are never blocked.
+
+- **Opt-in & reversible.** Nothing is written until you run `setup`; it backs up the
+  settings file, deep-merges idempotently (re-running updates in place, never
+  duplicates), and `uninstall` removes exactly the managed hook.
+- **Disable the heartbeat** entirely with `EFFICIENT_TOKEN_ENFORCE=0` — the hook
+  then always fails open.
+
+### Health in the status line (no API call)
+
+`efficient-token setup` (above) **already wires this up** — it points Claude Code's
+[`statusLine`](https://docs.anthropic.com/en/docs/claude-code/statusline) at a tiny
+generated script that reads the server's heartbeat and shows health in the session
+with **no model turn / no API call**, refreshed automatically. Want *only* the
+status line (no enforcement)? Run `efficient-token setup --no-hook`. It never
+replaces a status line you set yourself.
+
+The widget renders e.g. `efficient-token v1.0.4 (free): up · 3.1k token read and
+passed 210 token to Claude (~93% less)`, or `efficient-token: not running` when the
+server is down.
+
+Prefer to wire it by hand instead? Point `statusLine` at the built-in command:
+
+```json
+// .claude/settings.json
+{
+  "statusLine": { "type": "command", "command": "node /abs/path/to/dist/index.js status --line" }
+}
+```
+
+Run `npx efficient-token status` yourself for the **full, health-style report** —
+version, tier, root, limits, and the session savings breakdown — all from the
+heartbeat, no API call:
+
+```text
+efficient-token: up
+version: 1.0.4
+tier: free
+root: /abs/project
+maxReadTokens: 6000
+maxFileBytes: 2000000
+savings this session (estimate):
+  efficient-token read ~3100 tokens of source and passed ~210 to Claude — ~93% fewer (12 read(s))
+  saved ~2890 tokens
+last heartbeat: 4s ago
+```
+
+(Both figures are real measurements — the source it read vs. what it passed to
+Claude. The server can't see the model's true session total; only Claude Code's
+`/cost` can.)
+
+(`--json` gives the raw data.) It reads the same heartbeat as the enforcement hook,
+so `EFFICIENT_TOKEN_ENFORCE=0` makes it report "not running". The `health` tool
+reports the same details — including the server version — when you want them
+in-conversation instead.
 
 ## Usage
 
@@ -214,9 +332,9 @@ things worth knowing:
 
 - **Workspace root.** All file access is confined to one root (`EFFICIENT_TOKEN_ROOT`,
   default: the directory the host launched in). Paths are relative to that root.
-- **Reads degrade, never dump.** A whole-file read over the token budget returns an
-  outline plus a bounded head, with an instruction to request a specific symbol or
-  range — so a huge file can't blow your context.
+- **Reads degrade, never dump.** A whole-file read over the token budget returns the
+  first page of real content (like the built-in `Read`) with how to continue
+  (`offset=…`, or `code_outline` for a map) — so a huge file can't blow your context.
 - **Edits are guarded.** `code_edit` / `code_write` / `apply_patch` / `replace_symbol`
   refuse a change that would leave an unclosed token (set `validate=false` to
   override) and write atomically. The mutating tools declare `destructiveHint`, so
@@ -229,20 +347,21 @@ things worth knowing:
 
 Two complementary numbers, both built in.
 
-**1 · Tokens saved this session — the `health` tool.** Every distilled read records
-an exact baseline (what a whole-file `Read` would have returned) against what was
-actually returned, and `health` surfaces the running total:
+**1 · Tokens saved this session — `health`, `status`, or the status line.** Every
+distilled read records two real numbers: the source it read (what a whole-file
+`Read` would have returned) and what it actually passed to Claude. `health`,
+`efficient-token status`, and the status line all surface the running total:
 
 ```text
 savings this session (estimate):
-  this server returned ~406 tokens across 2 distilled read(s)
-  equivalent built-in whole-file reads would have cost ~2455 tokens
-  net saved ~2049 tokens (~83%) [read 1671t/1, outline 379t/1]
+  efficient-token read ~2455 tokens of source and passed ~406 to Claude — ~83% fewer (2 read(s))
+  saved ~2049 tokens [read 1671t/1, outline 379t/1]
 ```
 
-The baseline is exact (real byte counts); the token figure is an estimate at ~4
-chars/token, clamped so it can never overstate. Just ask the model to call `health`
-at any point to see the tally.
+Both figures are real byte counts (the token figure is an estimate at ~4
+chars/token, clamped so it can never overstate). Ask the model to call `health`
+in-conversation, or — with no API call — run `efficient-token status` or watch the
+[status line](#health-in-the-status-line-no-api-call).
 
 **2 · Fixed per-turn cost — `npm run toolcost`.** Every tool definition (name +
 description + schema) ships to the model on **every** turn, whether or not it fires.
@@ -250,7 +369,7 @@ This reports that fixed cost, broken down by bundle and by top offenders:
 
 ```bash
 npm run toolcost
-# TOTAL  45 tool(s)  28236 chars  ~7059 tok
+# TOTAL  47 tool(s)  31299 chars  ~7825 tok
 ```
 
 Use it to decide which **bundles** to load. Setting `EFFICIENT_TOKEN_GROUPS=core`
@@ -265,18 +384,19 @@ register the server).
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `EFFICIENT_TOKEN_ROOT` | current working dir | Workspace root. All file access is confined here. |
-| `EFFICIENT_TOKEN_MAX_READ_TOKENS` | `6000` | Whole-file read budget before `code_read` degrades to an outline. |
+| `EFFICIENT_TOKEN_MAX_READ_TOKENS` | `6000` | Whole-file read budget before `code_read` returns a first-page preview. |
 | `EFFICIENT_TOKEN_MAX_FILE_BYTES` | `2000000` | Hard cap on the size of any file the server will read. |
 | `EFFICIENT_TOKEN_GROUPS` | *(all)* | Comma-separated tool **bundles** to register: `core` (everything except the design tools) and `design` (`color_contrast`, `font_info`, `design_tokens`, `svg_digest`, `token_usage`, `media_info`). Unset loads all; `core` always loads. Example: `core` in a code-only repo, `core,design` for UI/video work. |
+| `EFFICIENT_TOKEN_GENERATED_GLOBS` | *(none)* | Extra comma-separated globs marking generated files to hide by default from `code_search` / `repo_map` / `diff_digest` (added to the built-in defaults like `*.min.js`, `*.g.dart`, `**/generated/**`). Override per call with `includeGenerated: true`. |
 
 ## Tools
 
-45 tools, grouped by what you reach for. Every tool is read-only unless marked
+47 tools, grouped by what you reach for. Every tool is read-only unless marked
 *(mutating)* or *(executes)*. All are free and MIT-licensed.
 
 | Group | Tools | What for |
 | --- | --- | --- |
-| **Read & navigate** | 8 | read symbols/ranges, outline, repo map |
+| **Read & navigate** | 10 | read symbols/ranges, outline, repo map, keyed JSON |
 | **Search & symbols** | 10 | grep, references, call graph, types |
 | **Git & review** | 8 | diffs, blame, history, coverage |
 | **Creative & design** | 7 | images, media, color, fonts, SVG |
@@ -284,18 +404,21 @@ register the server).
 | **Edit & session** | 8 | atomic edits, rename, move, notes |
 
 <details open>
-<summary><strong>Read &amp; navigate</strong> · 8 tools</summary>
+<summary><strong>Read &amp; navigate</strong> · 10 tools</summary>
 
 | Tool | Use it to… |
 | --- | --- |
 | `health` | Confirm the server is connected and see tier, workspace, and limits, plus the estimated tokens saved this session by distilled reads. The baseline is exact: whole-file size against what was returned. *(read-only)* |
 | `code_outline` | List a file's symbols (functions, classes, methods, types) with line ranges and signatures, without the source. *(read-only)* |
-| `code_read` | Like Claude's `Read` (same `file_path`/`offset`/`limit`, cat-n output) but leaner: it can also extract one symbol, and a whole-file read over budget degrades to an outline plus head rather than dumping the file. *(read-only)* |
+| `code_read` | Like Claude's `Read` (same `file_path`/`offset`/`limit`, cat-n output) but leaner: it can also extract one symbol, and a whole-file read over budget returns the first page of content (with how to continue) rather than dumping the file. *(read-only)* |
 | `glob` | List file paths matching a glob or type, with no content, like Claude's `Glob` (same `pattern`/`path`). Find files without reading directories. Sorted by name for reproducibility rather than by mtime. *(read-only)* |
-| `read_many` | Read several symbols, ranges, or files in one call, the read-side analog of `apply_patch`. Output is labeled and budget-bounded, which cuts per-call round-trips. *(read-only)* |
+| `read_many` | Read several symbols, ranges, or files in one call, the read-side analog of `apply_patch`. One target can name several `symbols` of one file, or a symbol `withCallees` (the same-file functions it calls), collapsing outline → symbol → range round-trips. Output is labeled and budget-bounded. *(read-only)* |
+| `code_read` *(elide)* | `code_read` also takes `elideIfUnchanged`: a repeat read of a target unchanged since earlier this session returns a short "unchanged" marker instead of the bytes (re-orienting in edit loops). Re-read without the flag to get the source. *(read-only)* |
 | `json_query` | Extract a value from a JSON file by a dotted or bracket path (`scripts.build`, `items[0].name`) instead of reading the whole file. With no query it returns a shallow top-level overview of keys with their types and sizes. Token-bounded. *(read-only)* |
+| `json_get` | Read one top-level key's value from a JSON object file, plus its sibling metadata key if present (e.g. `@key` for localization/ARB-style bundles), in one call. *(read-only)* |
+| `json_set` | Insert or update one top-level key in a JSON object file *surgically* — it replaces just that key's value span in place (everything else stays byte-for-byte) or appends the key, and can set a sibling metadata key too. Re-validates as JSON before an atomic write. For large keyed JSON (localization bundles, token maps, config). *(mutating)* |
 | `read_at_rev` | The historical `code_read`: read one symbol, line range, or whole file as of a git revision, degrading to an outline over budget, instead of letting `git show <ref>:file` dump everything. *(read-only)* |
-| `repo_map` | A token-bounded table of contents: the file tree grouped by directory, with each source file's top-level symbols (classes, functions, types). Orient in a codebase without reading files. *(read-only)* |
+| `repo_map` | A token-bounded table of contents: the file tree grouped by directory, with each source file's top-level symbols (classes, functions, types). Orient in a codebase without reading files. Generated files are hidden by default (count reported); `includeGenerated: true` to show them. *(read-only)* |
 
 </details>
 
@@ -304,7 +427,7 @@ register the server).
 
 | Tool | Use it to… |
 | --- | --- |
-| `code_search` | Like Claude's `Grep` (ripgrep), with the same params: `output_mode` (`files_with_matches`/`content`/`count`), `glob`/`type`, `-A`/`-B`/`-C`, `-i`, `-n`, `-o`, `head_limit`, `multiline`. Returns matches, not whole files. *(read-only)* |
+| `code_search` | Like Claude's `Grep` (ripgrep), with the same params: `output_mode` (`files_with_matches`/`content`/`count`), `glob`/`type`, `-A`/`-B`/`-C`, `-i`, `-n`, `-o`, `head_limit`, `multiline`. Returns matches, not whole files. Generated files (glob list + `@generated` marker) are skipped by default (count reported); `includeGenerated: true` to include. *(read-only)* |
 | `grep_context` | Regex search that returns each match with its enclosing function or class source (deduped, line-numbered, matched lines marked `›`). One call replaces a search followed by opening each file. *(read-only)* |
 | `find_references` | Locate where a symbol is defined (AST-precise: kind, line, signature) and where it is used (identifier-boundary scan) across the workspace, as `file:line` locations. *(read-only)* |
 | `symbol_find` | Find where symbols are defined by name, exact or `substring` for fuzzy recall, returning `file:line` with kind and signature. Takes an optional `kind` filter. *(read-only)* |
@@ -322,7 +445,7 @@ register the server).
 
 | Tool | Use it to… |
 | --- | --- |
-| `diff_digest` | Review git changes as hunks only, or as a `--stat` summary or file list, scoped by `ref`/`staged`/`path`, instead of reading whole changed files. Read-only git. *(read-only)* |
+| `diff_digest` | Review git changes as hunks only, or as a `--stat` summary or file list, scoped by `ref`/`staged`/`path`, instead of reading whole changed files. Generated files are excluded by default (count reported); `includeGenerated: true` to include. Read-only git. *(read-only)* |
 | `review_branch` | A semantic change summary: each changed file with the symbols that changed (functions, classes), mapped from the diff to the AST. Review a branch or PR without reading hunks. *(read-only)* |
 | `commit_log` | Compact commit history, one row per commit (`sha date author subject`, no bodies or diffs), scoped by `path`/`ref`/`limit` instead of raw `git log`. *(read-only)* |
 | `line_blame` | Line provenance via `git blame`, with contiguous same-commit runs collapsed into ranges (`Lstart-Lend sha date author summary`). Scope it to a symbol or range; uncommitted lines are marked. *(read-only)* |
@@ -356,7 +479,7 @@ register the server).
 | `code_check` | Run one of the project's own `package.json` scripts (test, build, lint, typecheck) and return a one-line PASS or bounded failure output, never the whole log. Allowlisted to defined scripts, so no arbitrary commands. *(executes)* |
 | `check_locate` | Like `code_check`, but on failure it parses `file:line` from the output and returns the failing source with its enclosing symbol — the check failed, so here's the code, in one call. *(executes)* |
 | `trace_locate` | Paste a stack trace or error output and get the source at each `file:line` frame, with context and the enclosing symbol. External and `node_modules` frames are skipped. *(read-only)* |
-| `test_run` | Run a focused test by forwarding a `filter` to a package.json test script (`npm run test -- <filter>`), returning PASS or a bounded failure tail with the failing source. The filter is charset-restricted to exclude shell metacharacters. *(executes)* |
+| `test_run` | Run a focused test by forwarding a `filter` to a package.json test script (`npm run test -- <filter>`), or set `changed: true` to run only the tests affected by the working-tree diff (changed tests + tests referencing a changed source). Returns PASS or a bounded failure tail with the failing source; the selection is reported. The filter is charset-restricted to exclude shell metacharacters. *(executes)* |
 
 </details>
 
@@ -368,7 +491,7 @@ register the server).
 | `code_edit` | Like Claude's `Edit` (same `file_path`/`old_string`/`new_string`/`replace_all`): the match must be verbatim and unique unless `replace_all=true`, missing or ambiguous matches are refused, and the write is atomic. Tolerates CRLF/LF newline differences. Refuses a change leaving an unclosed token unless `validate=false`. *(mutating)* |
 | `code_write` | Like Claude's `Write` (same `file_path`/`content`); creates parent dirs and writes atomically. Carries the same syntax-error guard as `code_edit`. *(mutating)* |
 | `replace_symbol` | Replace a whole function/class/method definition by name: pass only the new source, not the old body as a match anchor. Resolves the span via the AST (export/decorator-aware, line-ending and BOM faithful), disambiguates by `container`/`occurrence`, syntax-guarded, atomic. *(mutating)* |
-| `apply_patch` | Apply many edits across one or more files in one atomic, all-or-nothing call. Each edit is `{ file_path, old_string, new_string, replace_all? }`. Validated (incl. syntax guard) in memory first; if anything fails, nothing is written. *(mutating)* |
+| `apply_patch` | Apply many edits across one or more files in one atomic, all-or-nothing call. Each edit is `{ file_path, old_string, new_string, replace_all? }`. Validated (incl. syntax guard) in memory first; if anything fails, nothing is written. Optionally runs a package.json `check` after applying and appends its result. *(mutating)* |
 | `move_symbol` | Relocate a definition from one file to another atomically, rewriting the named imports/re-exports of it across the workspace and importing it back into the source if still used. Reports the moved code's dependencies so you can complete the destination's imports. `dryRun`-able, syntax-guarded. JS/TS. *(mutating)* |
 | `project_rename` | Rename an identifier across the whole workspace in one atomic call (identifier-boundary, syntax-guarded, `dryRun`-able) instead of find_references plus editing each file. Textual, scoped with `path`/`type`. *(mutating)* |
 | `note_write` / `note_read` | A small persistent scratchpad under `.efficient-token/notes/`. Stash and recall plans and findings across steps and agents. *(write / read)* |
@@ -415,7 +538,7 @@ src/
              read.ts · text.ts · edits.ts · git.ts · run-script.ts
   services/  logger.ts · paths.ts · fs.ts · ast.ts · scan.ts
              budget.ts · savings.ts · license.ts
-  plugins/   one folder per tool (45 tools across the groups above)
+  plugins/   one folder per tool (47 tools across the groups above)
   index.ts   bootstrap: build ctx, register plugins, serve over stdio
 scripts/
   smoke.ts   in-process self-test      e2e.ts      real-stdio round-trip
@@ -455,51 +578,10 @@ returns a `Plugin`, talk only to `ctx`, set the correct `tier`, add one entry to
 `plugins` array in `src/index.ts`, and extend `scripts/smoke.ts`. Nothing else
 changes. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full workflow.
 
-## Releasing
-
-Publishing to npm is automated: pushing a `v*` tag triggers the
-[release workflow](./.github/workflows/release.yml), which verifies the tag matches
-`package.json`, builds, runs the tests, publishes to npm with provenance, and
-creates the GitHub Release. To cut a release:
-
-1. **Bump the version.** Update `version` in `package.json`. The same version string
-   also lives in `src/index.ts` (the `VERSION` constant) and each plugin's `version`
-   field — keep them in sync. A find-and-replace of the old version across `src`
-   handles the constants:
-
-   ```bash
-   # Linux (GNU sed): bump 1.0.3 -> 1.0.4 across src + package.json
-   grep -rl '1\.0\.3' src package.json | xargs sed -i 's/1\.0\.3/1.0.4/g'
-   ```
-   ```powershell
-   # Windows PowerShell
-   $old = '1.0.3'; $new = '1.0.4'
-   @(Get-ChildItem -Recurse src -Filter *.ts) + (Get-Item package.json) |
-     ForEach-Object { (Get-Content $_.FullName -Raw).Replace($old, $new) |
-       Set-Content -NoNewline $_.FullName }
-   ```
-
-2. **Update [`CHANGELOG.md`](./CHANGELOG.md).** Add a dated section for the new
-   version ([Keep a Changelog](https://keepachangelog.com) format) and a link
-   reference at the bottom.
-
-3. **Commit, then tag and push:**
-
-   ```bash
-   git commit -am "chore(release): 1.0.4"
-   git tag -a v1.0.4 -m "efficient-token v1.0.4"
-   git push origin main --follow-tags
-   ```
-
-Follow [semantic versioning](https://semver.org): **patch** for fixes, **minor** for
-new tools or backward-compatible features, **major** for breaking changes. If the
-tag and `package.json` disagree, the release fails its check before publishing — so
-a mistake never ships.
-
 ## Contributing & security
 
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — dev setup, the plugin contract, and the
-  Definition of Done.
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — dev setup, the plugin contract, the
+  Definition of Done, and the release process.
 - [`SECURITY.md`](./SECURITY.md) — the sandbox/security model and how to report a
   vulnerability privately.
 - [`CHANGELOG.md`](./CHANGELOG.md) — release history.

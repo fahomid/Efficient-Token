@@ -18,7 +18,7 @@ export function reviewBranchPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "review-branch",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -84,10 +84,13 @@ export function reviewBranchPlugin(): Plugin {
                   detail = "  (no parsed symbols for this file type)";
                 } else {
                   const outline = (await ctx.ast.outline(file.path, content)) ?? [];
-                  const changed = changedSymbols(outline, ranges.get(file.path) ?? []);
-                  detail = changed.length
+                  const fileRanges = ranges.get(file.path) ?? [];
+                  const changed = changedSymbols(outline, fileRanges);
+                  const changedLineCount = fileRanges.reduce((n, [c, e]) => n + (e - c + 1), 0);
+                  const capNote = changedLineCount > MAX_CHANGED_LINES ? `\n  [changed-line scan capped at ${MAX_CHANGED_LINES} — some changed symbols may be omitted; narrow with path]` : "";
+                  detail = (changed.length
                     ? changed.map((s) => `  ~ ${s.kind} ${s.container ? `${s.container}.` : ""}${s.name}`).join("\n")
-                    : "  (changes outside any symbol)";
+                    : "  (changes outside any symbol)") + capNote;
                 }
               }
               const block = `${headLine}\n${detail}`;

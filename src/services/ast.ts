@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { Language, Parser, type Node } from "web-tree-sitter";
 
-import { truncate } from "../core/text.js";
+import { fingerprint, truncate } from "../core/text.js";
 import type { Logger } from "./logger.js";
 
 /** A definition surfaced from a file's syntax tree. */
@@ -353,22 +353,55 @@ export class AstService {
    * 1-based line). Used by `call_hierarchy` to list a function's callees.
    * @returns `undefined` if the file type has no grammar or no call mapping.
    */
-  async findCalls(filePath: string, code: string): Promise<Array<{ name: string; line: number }> | undefined> {
+  async findCalls(filePath: string, code: string): Promise<Array<{ name: string; line: number; bare: boolean }> | undefined> {
     const id = this.grammarIdFor(filePath);
     if (id === undefined) return undefined;
     const specs = CALL_SPECS[id];
     if (specs === undefined) return undefined;
     return this.run(filePath, code, (root) => {
-      const out: Array<{ name: string; line: number }> = [];
+      const out: Array<{ name: string; line: number; bare: boolean }> = [];
       this.walkAllCalls(root, specs, out, 0);
       return out;
     });
   }
 
+  /**
+   * Names of symbols defined in this same file that `symbolName` directly calls
+   * (callees invoked within its body), in source order. Powers read_many's
+   * withCallees mode — reading a function together with the local helpers it
+   * invokes, without separate lookups.
+   * @returns `undefined` if the file has no grammar or no call mapping; `[]` if
+   * the symbol isn't found or it calls nothing defined in this file.
+   */
+  async directCallees(filePath: string, code: string, symbolName: string): Promise<string[] | undefined> {
+    const out = await this.outline(filePath, code);
+    if (out === undefined) return undefined;
+    // Union every definition of this name (duplicate/overloaded), so a callee in
+    // the second definition isn't dropped.
+    const defs = out.filter((s) => s.name === symbolName);
+    if (defs.length === 0) return [];
+    const calls = await this.findCalls(filePath, code);
+    if (calls === undefined) return undefined;
+    const inDef = (line: number): boolean => defs.some((d) => line >= d.startLine && line <= d.endLine);
+    // Only bare-identifier calls count: a method call (db.save()) must not match a
+    // same-named top-level function.
+    const calledHere = new Set(calls.filter((c) => c.bare && inDef(c.line)).map((c) => c.name));
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const s of out) {
+      if (s.name === symbolName || seen.has(s.name)) continue;
+      if (calledHere.has(s.name)) {
+        seen.add(s.name);
+        result.push(s.name);
+      }
+    }
+    return result;
+  }
+
   private walkAllCalls(
     node: Node,
     specs: ReadonlyArray<{ type: string; field?: string }>,
-    out: Array<{ name: string; line: number }>,
+    out: Array<{ name: string; line: number; bare: boolean }>,
     depth: number,
   ): void {
     if (depth > 4000 || out.length > 20000) return;
@@ -379,7 +412,10 @@ export class AstService {
       if (spec) {
         const callee = (spec.field ? child.childForFieldName(spec.field) : null) ?? child.namedChild(0);
         const name = callee ? this.calleeName(callee) : undefined;
-        if (name && callee) out.push({ name, line: callee.startPosition.row + 1 });
+        // `bare` marks a plain-identifier callee (foo()) vs a member/qualified one
+        // (obj.foo()), so same-file callee matching can ignore method calls whose
+        // tail merely coincides with a local function name.
+        if (name && callee) out.push({ name, line: callee.startPosition.row + 1, bare: IDENT_TYPES.has(callee.type) });
       }
       this.walkAllCalls(child, specs, out, depth + 1);
     }
@@ -781,14 +817,4 @@ function kindFromType(type: string): string {
 /** Exact source slice for a node. */
 function textOf(node: Node, src: string): string {
   return src.slice(node.startIndex, node.endIndex);
-}
-
-/** Fast 32-bit FNV-1a fingerprint of source, used in the outline cache key. */
-function fingerprint(s: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
 }

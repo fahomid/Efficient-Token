@@ -16,7 +16,7 @@ export function commitLogPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "commit-log",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;

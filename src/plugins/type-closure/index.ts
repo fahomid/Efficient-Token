@@ -22,7 +22,7 @@ export function typeClosurePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "type-closure",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -69,7 +69,8 @@ export function typeClosurePlugin(): Plugin {
             }
 
             if (!index.has(seedName)) {
-              return fail(`type "${seedName}" not found among workspace type definitions${args.path ? ` under ${String(args.path)}` : ""}.`);
+              const inc = scan.truncated ? ` (scan stopped at ${MAX_SCAN_FILES} files — it may be defined beyond; narrow with path/type)` : "";
+              return fail(`type "${seedName}" not found among workspace type definitions${args.path ? ` under ${String(args.path)}` : ""}${inc}.`);
             }
 
             const budgetChars = maxTokens * 4;

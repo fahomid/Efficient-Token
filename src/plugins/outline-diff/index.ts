@@ -19,7 +19,7 @@ export function outlineDiffPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "outline-diff",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -64,9 +64,10 @@ export function outlineDiffPlugin(): Plugin {
             let used = 0;
             let truncated = false;
             let shown = 0;
+            let skippedUnsupported = 0;
 
             for (const rel of files.slice(0, MAX_FILES)) {
-              if (!ctx.ast.supports(rel)) continue;
+              if (!ctx.ast.supports(rel)) { skippedUnsupported++; continue; }
               const baseContent = await showAt(ctx, base, rel);
               const toContent = to === undefined ? await readWorking(ctx, rel) : await showAt(ctx, to, rel);
               if (baseContent === undefined && toContent === undefined) continue;
@@ -102,8 +103,11 @@ export function outlineDiffPlugin(): Plugin {
             }
 
             const header = `outline_diff: ${base}..${to ?? "(working tree)"} — ${shown} file(s) with symbol changes`;
-            const note = truncated || files.length > MAX_FILES ? "\n[truncated — scope with path or raise maxTokens]" : "";
-            if (shown === 0) return ok(`${header}\n(no symbol-level changes; changes are outside any symbol or in non-parsed files)`);
+            const notes: string[] = [];
+            if (truncated || files.length > MAX_FILES) notes.push("truncated — scope with path or raise maxTokens");
+            if (skippedUnsupported > 0) notes.push(`${skippedUnsupported} changed file(s) skipped (unparsed type) — use diff_digest for their line-level changes`);
+            const note = notes.length ? `\n[${notes.join("; ")}]` : "";
+            if (shown === 0) return ok(`${header}\n(no symbol-level changes; changes are outside any symbol or in non-parsed files)${note}`);
             return ok(`${header}\n\n${sections.join("\n\n")}${note}`);
           } catch (err) {
             return fail(`outline_diff failed: ${errMessage(err)}`);

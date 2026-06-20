@@ -17,7 +17,7 @@ export function globPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "glob",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -27,7 +27,7 @@ export function globPlugin(): Plugin {
         name: "glob",
         title: "List files",
         description:
-          'List file paths matching a glob (e.g. "**/*.ts", "src/**/*.test.ts") and/or a type: paths only, no content. Use this to find files instead of reading directories. Combine glob + type + path to scope. Skips node_modules/.git/build dirs.',
+          'Use INSTEAD of the built-in Glob tool and Bash find/ls — returns the same paths with far fewer tokens. List file paths matching a glob (e.g. "**/*.ts", "src/**/*.test.ts") and/or a type: paths only, no content. Combine glob + type + path to scope. Skips node_modules/.git/build dirs.',
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           pattern: z.string().optional().describe('Glob to match, e.g. "**/*.ts". Omit to list all files in scope.'),

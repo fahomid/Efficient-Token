@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
+import { hasGeneratedMarker } from "../../core/generated.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { TYPE_EXTS } from "../../services/scan.js";
 
@@ -17,7 +18,7 @@ export function repoMapPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "repo-map",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -35,6 +36,7 @@ export function repoMapPlugin(): Plugin {
           type: z.string().optional().describe('Only include this file type, e.g. "ts".'),
           maxTokens: z.number().int().positive().optional().describe("Bound the output size (default: server read budget)."),
           symbolsPerFile: z.number().int().positive().optional().describe(`Max symbols listed per file (default ${DEFAULT_PER_FILE}).`),
+          includeGenerated: z.boolean().optional().describe("Include generated files (e.g. *.min.js, *.g.dart, @generated-marked). Default false: hidden and counted."),
         },
         handler: async (args) => {
           try {
@@ -42,12 +44,16 @@ export function repoMapPlugin(): Plugin {
             const perFile = args.symbolsPerFile === undefined ? DEFAULT_PER_FILE : Number(args.symbolsPerFile);
             const type = args.type === undefined ? undefined : String(args.type).toLowerCase();
             const exts = type ? TYPE_EXTS[type] ?? [type] : undefined;
+            const includeGenerated = args.includeGenerated === true;
+            let markerHidden = 0;
 
             const scan = await ctx.scan.files({
               ...(args.path !== undefined ? { within: String(args.path) } : {}),
               ...(args.glob !== undefined ? { glob: String(args.glob) } : {}),
               ...(exts ? { exts } : {}),
               maxFiles: MAX_SCAN_FILES,
+              skipGenerated: !includeGenerated,
+              generatedGlobs: ctx.config.generatedGlobs,
             });
 
             if (scan.files.length === 0) return ok("repo_map: no files found for the given scope.");
@@ -73,14 +79,17 @@ export function repoMapPlugin(): Plugin {
             let budgetHit = false;
 
             for (const f of files) {
-              const slash = f.rel.lastIndexOf("/");
-              const dir = slash === -1 ? "." : f.rel.slice(0, slash);
-              const base = slash === -1 ? f.rel : f.rel.slice(slash + 1);
+              const dir = dirOf(f.rel) || ".";
+              const base = baseOf(f.rel);
 
               let entry: string;
               let shownHere = 0;
               if (ctx.ast.supports(f.rel)) {
                 const content = await readText(ctx, f.rel);
+                if (content !== undefined && !includeGenerated && hasGeneratedMarker(content.slice(0, 4000))) {
+                  markerHidden++;
+                  continue;
+                }
                 const outline = content === undefined ? undefined : await ctx.ast.outline(f.rel, content);
                 const top = (outline ?? []).filter((s) => s.container === undefined);
                 if (top.length > 0) {
@@ -115,10 +124,11 @@ export function repoMapPlugin(): Plugin {
             }
 
             const header = `repo map — ${fileCount} file(s), ${symbolCount} top-level symbol(s)`;
-            const trailer =
-              budgetHit || scan.truncated
-                ? `\n[map truncated — narrow with path/glob/type or raise maxTokens]`
-                : "";
+            const hidden = scan.skippedGenerated + markerHidden;
+            const notes: string[] = [];
+            if (budgetHit || scan.truncated) notes.push("map truncated — narrow with path/glob/type or raise maxTokens");
+            if (hidden > 0) notes.push(`${hidden} generated file(s) hidden — set includeGenerated:true to include`);
+            const trailer = notes.length ? `\n[${notes.join("; ")}]` : "";
             return ok(`${header}\n\n${lines.join("\n")}${trailer}`);
           } catch (err) {
             return fail(`repo_map failed: ${errMessage(err)}`);

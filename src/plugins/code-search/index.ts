@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CoreContext, Plugin } from "../../core/contract.js";
+import { hasGeneratedMarker } from "../../core/generated.js";
 import { errMessage, fail, ok } from "../../core/result.js";
 import { splitLines, truncate } from "../../core/text.js";
 import { TYPE_EXTS } from "../../services/scan.js";
@@ -19,7 +20,7 @@ export function codeSearchPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "code-search",
-    version: "1.0.3",
+    version: "1.0.4",
     tier: "free",
     init(c) {
       ctx = c;
@@ -29,7 +30,7 @@ export function codeSearchPlugin(): Plugin {
         name: "code_search",
         title: "Search code",
         description:
-          "Regex search across the workspace, mirroring Claude's Grep (ripgrep): same params (output_mode, -i, -A/-B/-C, -n, -o, head_limit, glob, type, multiline). Returns matching file paths (default), matching lines (output_mode=content), or per-file counts (output_mode=count), not whole files. Prefer this over reading many files to find where something is. Skips node_modules/.git/build dirs.",
+          "Use INSTEAD of the built-in Grep tool and Bash grep/rg — returns the same matches at a fraction of the tokens. Regex search across the workspace, mirroring Claude's Grep (ripgrep): same params (output_mode, -i, -A/-B/-C, -n, -o, head_limit, glob, type, multiline). Returns matching file paths (default), matching lines (output_mode=content), or per-file counts (output_mode=count), not whole files. Skips node_modules/.git/build dirs.",
         annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
         inputSchema: {
           pattern: z.string().min(1).describe("Regular expression to search for."),
@@ -48,6 +49,7 @@ export function codeSearchPlugin(): Plugin {
           "-o": z.boolean().optional().describe("Output only the matched parts, one per line (content mode)."),
           multiline: z.boolean().optional().describe("Let the pattern span lines (dot matches newline)."),
           head_limit: z.number().int().positive().optional().describe(`Cap results (default ${DEFAULT_HEAD}).`),
+          includeGenerated: z.boolean().optional().describe("Include generated files (e.g. *.min.js, *.g.dart, @generated-marked). Default false: hidden and counted."),
         },
         handler: async (args) => {
           try {
@@ -60,6 +62,8 @@ export function codeSearchPlugin(): Plugin {
             const after = numOr(args["-A"], numOr(args["-C"], 0));
             const showLineNo = args["-n"] !== false; // Grep -n defaults to true
             const onlyMatching = args["-o"] === true;
+            const includeGenerated = args.includeGenerated === true;
+            let markerHidden = 0;
 
             let lineRe: RegExp;
             let blockRe: RegExp;
@@ -77,7 +81,22 @@ export function codeSearchPlugin(): Plugin {
               ...(args.glob !== undefined ? { glob: String(args.glob) } : {}),
               ...(exts ? { exts } : {}),
               maxFiles: MAX_SCAN_FILES,
+              skipGenerated: !includeGenerated,
+              generatedGlobs: ctx.config.generatedGlobs,
             });
+
+            // Read a file for searching, but drop @generated-marked files (which a
+            // name-only glob can't catch) unless they were explicitly requested.
+            const fetch = async (rel: string): Promise<string | undefined> => {
+              const content = await readText(ctx, rel);
+              if (content === undefined) return undefined;
+              if (!includeGenerated && hasGeneratedMarker(content.slice(0, 4000))) {
+                markerHidden++;
+                return undefined;
+              }
+              return content;
+            };
+            const hidden = (): number => scan.skippedGenerated + markerHidden;
 
             const matchesText = (content: string): boolean =>
               multiline ? blockRe.test(content) : splitLines(content).some((l) => lineRe.test(l));
@@ -85,35 +104,35 @@ export function codeSearchPlugin(): Plugin {
             if (mode === "files_with_matches") {
               const hits: string[] = [];
               for (const f of scan.files) {
-                const content = await readText(ctx, f.rel);
+                const content = await fetch(f.rel);
                 if (content === undefined) continue;
                 blockRe.lastIndex = 0;
                 if (matchesText(content)) hits.push(f.rel);
                 if (hits.length >= head) break;
               }
               const capped = hits.length >= head;
-              if (hits.length === 0) return ok(noMatchMessage(args));
+              if (hits.length === 0) return ok(noMatchMessage(args) + trailer(scan.truncated, false, hidden()));
               return ok(
                 `${hits.length}${capped ? "+" : ""} file(s) with matches:\n${hits.join("\n")}` +
-                  trailer(scan.truncated, capped),
+                  trailer(scan.truncated, capped, hidden()),
               );
             }
 
             if (mode === "count") {
               const counts: Array<[string, number]> = [];
               for (const f of scan.files) {
-                const content = await readText(ctx, f.rel);
+                const content = await fetch(f.rel);
                 if (content === undefined) continue;
                 const n = multiline ? countAll(blockRe, content) : splitLines(content).filter((l) => lineRe.test(l)).length;
                 if (n > 0) counts.push([f.rel, n]);
                 if (counts.length >= head) break;
               }
-              if (counts.length === 0) return ok(noMatchMessage(args));
+              if (counts.length === 0) return ok(noMatchMessage(args) + trailer(scan.truncated, false, hidden()));
               const total = counts.reduce((a, [, n]) => a + n, 0);
               return ok(
                 `${total} match(es) in ${counts.length} file(s):\n` +
                   counts.map(([r, n]) => `${r}: ${n}`).join("\n") +
-                  trailer(scan.truncated, counts.length >= head),
+                  trailer(scan.truncated, counts.length >= head, hidden()),
               );
             }
 
@@ -124,28 +143,57 @@ export function codeSearchPlugin(): Plugin {
             const oRe = onlyMatching ? new RegExp(pattern, `g${insensitive ? "i" : ""}`) : null;
             for (const f of scan.files) {
               if (limited) break;
-              const content = await readText(ctx, f.rel);
+              const content = await fetch(f.rel);
               if (content === undefined) continue;
               const lines = splitLines(content);
+
+              // Which line indices belong to a match. In multiline mode a single
+              // match can span lines, so derive them from blockRe over the whole
+              // file (mirroring ripgrep -U); otherwise test each line.
               const matched = new Set<number>();
-              for (let i = 0; i < lines.length; i++) {
-                if (lineRe.test(lines[i]!)) matched.add(i);
+              if (multiline) {
+                blockRe.lastIndex = 0;
+                let m: RegExpExecArray | null;
+                while ((m = blockRe.exec(content)) !== null) {
+                  const ms = lineOf(content, m.index);
+                  const me = lineOf(content, m.index + m[0].length);
+                  for (let i = ms; i <= me && i < lines.length; i++) matched.add(i);
+                  if (m.index === blockRe.lastIndex) blockRe.lastIndex++; // zero-width guard
+                  if (blockRe.lastIndex > content.length) break;
+                }
+              } else {
+                for (let i = 0; i < lines.length; i++) {
+                  if (lineRe.test(lines[i]!)) matched.add(i);
+                }
               }
               if (matched.size === 0) continue;
+
               if (oRe) {
-                // -o: emit only the matched substrings, one per match (no context).
-                for (const i of [...matched].sort((a, b) => a - b)) {
-                  if (limited) break;
-                  oRe.lastIndex = 0;
+                // -o: emit only the matched substrings (no context). A multiline
+                // match can cross lines, so use blockRe; otherwise the per-line oRe.
+                if (multiline) {
+                  blockRe.lastIndex = 0;
                   let m: RegExpExecArray | null;
-                  while ((m = oRe.exec(lines[i]!)) !== null) {
-                    out.push(`${f.rel}${showLineNo ? `:${i + 1}` : ""}:${truncate(m[0], MAX_LINE)}`);
-                    if (m.index === oRe.lastIndex) oRe.lastIndex++; // zero-width match guard
+                  while ((m = blockRe.exec(content)) !== null) {
+                    out.push(`${f.rel}${showLineNo ? `:${lineOf(content, m.index) + 1}` : ""}:${truncate(m[0], MAX_LINE)}`);
+                    if (m.index === blockRe.lastIndex) blockRe.lastIndex++;
                     if (++shown >= head) { limited = true; break; }
+                  }
+                } else {
+                  for (const i of [...matched].sort((a, b) => a - b)) {
+                    if (limited) break;
+                    oRe.lastIndex = 0;
+                    let m: RegExpExecArray | null;
+                    while ((m = oRe.exec(lines[i]!)) !== null) {
+                      out.push(`${f.rel}${showLineNo ? `:${i + 1}` : ""}:${truncate(m[0], MAX_LINE)}`);
+                      if (m.index === oRe.lastIndex) oRe.lastIndex++; // zero-width match guard
+                      if (++shown >= head) { limited = true; break; }
+                    }
                   }
                 }
                 continue;
               }
+
               for (const [s, e] of mergeRanges([...matched], before, after, lines.length)) {
                 if (out.length > 0) out.push("--");
                 for (let i = s; i <= e && !limited; i++) {
@@ -157,8 +205,8 @@ export function codeSearchPlugin(): Plugin {
                 }
               }
             }
-            if (shown === 0) return ok(noMatchMessage(args));
-            return ok(`${shown}${limited ? "+" : ""} match(es):\n${out.join("\n")}` + trailer(scan.truncated, limited));
+            if (shown === 0) return ok(noMatchMessage(args) + trailer(scan.truncated, false, hidden()));
+            return ok(`${shown}${limited ? "+" : ""} match(es):\n${out.join("\n")}` + trailer(scan.truncated, limited, hidden()));
           } catch (err) {
             return fail(`code_search failed: ${errMessage(err)}`);
           }
@@ -179,6 +227,14 @@ async function readText(ctx: CoreContext, rel: string): Promise<string | undefin
 
 function numOr(v: unknown, fallback: number): number {
   return v === undefined ? fallback : Number(v);
+}
+
+/** 0-based line index of a character offset (counts the `\n` before it). */
+function lineOf(s: string, offset: number): number {
+  let n = 0;
+  const end = Math.min(offset, s.length);
+  for (let i = 0; i < end; i++) if (s.charCodeAt(i) === 10) n++;
+  return n;
 }
 
 function countAll(re: RegExp, s: string): number {
@@ -211,10 +267,11 @@ function mergeRanges(idx: number[], before: number, after: number, total: number
   return ranges;
 }
 
-function trailer(scanTruncated: boolean, capped: boolean): string {
+function trailer(scanTruncated: boolean, capped: boolean, hidden = 0): string {
   const notes: string[] = [];
   if (capped) notes.push("results capped (raise headLimit or narrow the search)");
   if (scanTruncated) notes.push("file scan truncated (narrow with path/glob/type)");
+  if (hidden > 0) notes.push(`${hidden} generated file(s) hidden — set includeGenerated:true to include`);
   return notes.length ? `\n[${notes.join("; ")}]` : "";
 }
 
