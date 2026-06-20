@@ -194,7 +194,7 @@ async function main(): Promise<void> {
   // Opt-in enforcement heartbeat (best-effort, fail-open). It also publishes a
   // small status JSON so `efficient-token status` / a status line can show health
   // without an API call. Clean up on exit.
-  const stopHeartbeat = startHeartbeat(process.env.CLAUDE_PROJECT_DIR?.trim() || config.root, log, () => {
+  const heartbeat = startHeartbeat(process.env.CLAUDE_PROJECT_DIR?.trim() || config.root, log, () => {
     const s = ctx.savings.report();
     return {
       v: VERSION,
@@ -210,10 +210,13 @@ async function main(): Promise<void> {
       savedTokens: s.savedTokens,
     };
   });
-  process.once("exit", stopHeartbeat);
+  // Flush the heartbeat right after each distilled read so the status line reflects
+  // current savings between liveness ticks (coalesced; the read path is unaffected).
+  ctx.savings.onRecord(heartbeat.flush);
+  process.once("exit", heartbeat.stop);
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.once(sig, () => {
-      stopHeartbeat();
+      heartbeat.stop();
       process.exit(0);
     });
   }

@@ -4,6 +4,14 @@ All notable changes to **efficient-token** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- The in-session health heartbeat now flushes immediately after each distilled read
+  (coalesced to at most once per second), so `efficient-token status` and the status
+  line reflect current savings between the 30s liveness ticks instead of lagging by
+  up to 30s. The liveness timer is unchanged.
+
 ## [1.0.4] - 2026-06-19
 
 A feature release: two new keyed-JSON tools, richer multi-target reads,

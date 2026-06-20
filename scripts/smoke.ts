@@ -33,6 +33,7 @@ import { loadPremiumPlugins } from "../src/core/premium.js";
 import { PathSandbox } from "../src/services/paths.js";
 import { ReadCache } from "../src/services/read-cache.js";
 import { SavingsLedger } from "../src/services/savings.js";
+import { startHeartbeat } from "../src/core/heartbeat.js";
 import { Scanner } from "../src/services/scan.js";
 import { codeEditPlugin } from "../src/plugins/code-edit/index.js";
 import { codeOutlinePlugin } from "../src/plugins/code-outline/index.js";
@@ -987,6 +988,28 @@ async function main(): Promise<void> {
     await fsp.writeFile(stBeat, String(Date.now())); // legacy plain-timestamp heartbeat
     const stPlain = readStatus(stRoot);
     check("status: plain heartbeat is up without detail", stPlain.up === true && stPlain.version === undefined);
+
+    // --- heartbeat flush-on-record (status reflects fresh savings) ------
+    const led = new SavingsLedger();
+    let ledFired = 0;
+    led.onRecord(() => ledFired++);
+    led.record("read", 100, 10);
+    led.record("noop", 0, 0); // early-return (no baseline): must NOT fire
+    check("SavingsLedger.onRecord fires on a real record only", ledFired === 1);
+
+    const hbRoot = await mkTmp("efficient-token-hb-");
+    const hbLedger = new SavingsLedger();
+    const hb = startHeartbeat(hbRoot, ctx.log, () => ({ v: "x", savedTokens: hbLedger.report().savedTokens }));
+    hbLedger.onRecord(hb.flush);
+    const hbFile = path.join(hbRoot, ".claude", ".efficient-token.alive");
+    const hbBefore = JSON.parse(await fsp.readFile(hbFile, "utf8")); // startup touch: savedTokens 0
+    hbLedger.record("read", 4000, 200); // saves ~950 tok; fires the coalesced flush
+    await new Promise((r) => setTimeout(r, 1200)); // let the coalesced write land
+    const hbAfter = JSON.parse(await fsp.readFile(hbFile, "utf8"));
+    check("heartbeat flushes fresh savings after a recorded read", hbBefore.savedTokens === 0 && hbAfter.savedTokens > 0);
+    hb.stop();
+    const hbGone = !(await fsp.stat(hbFile).then(() => true).catch(() => false));
+    check("heartbeat stop() removes the file", hbGone);
 
     // --- json_query plugin ----------------------------------------------
     await ctx.fs.writeAtomic("jq/data.json", JSON.stringify({ name: "pkg", scripts: { build: "tsc", test: "vitest" }, deps: ["a", "b", "c"], nested: { deep: { value: 42 } } }, null, 2));

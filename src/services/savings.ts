@@ -25,6 +25,14 @@ export class SavingsLedger {
   private baselineChars = 0;
   private returnedChars = 0;
   private readonly kinds = new Map<string, { calls: number; saved: number }>();
+  private listener: (() => void) | undefined;
+
+  /** Register a callback fired after each recorded read — used to flush the
+   *  heartbeat so the status line reflects fresh savings without waiting for the
+   *  liveness timer. Errors in the callback are swallowed (it is best-effort). */
+  onRecord(cb: () => void): void {
+    this.listener = cb;
+  }
 
   /** Record one distilled read. `returnedChars` is clamped to the baseline. */
   record(kind: string, baselineChars: number, returnedChars: number): void {
@@ -37,6 +45,11 @@ export class SavingsLedger {
     k.calls += 1;
     k.saved += baselineChars - returned;
     this.kinds.set(kind, k);
+    try {
+      this.listener?.();
+    } catch {
+      /* a flush failure must never break a read */
+    }
   }
 
   report(): SavingsReport {
