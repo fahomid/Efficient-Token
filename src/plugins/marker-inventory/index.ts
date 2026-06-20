@@ -19,7 +19,7 @@ export function markerInventoryPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "marker-inventory",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     init(c) {
       ctx = c;

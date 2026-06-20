@@ -15,7 +15,7 @@ export function readAtRevPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "read-at-rev",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     init(c) {
       ctx = c;

@@ -4,7 +4,12 @@ All notable changes to **efficient-token** are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.5] - 2026-06-20
+
+A status/robustness release: the in-session health heartbeat is now isolated per
+server process and flushes after each distilled read, so `efficient-token status`
+and the status line stay correct and current even when more than one server runs on
+a single project.
 
 ### Changed
 - The in-session health heartbeat now flushes immediately after each distilled read
@@ -229,6 +234,7 @@ work, running checks, and editing.
   real-stdio `npm run e2e`; CI runs on Ubuntu and Windows across Node 18, 20, 22,
   and 24.
 
+[1.0.5]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.5
 [1.0.4]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.4
 [1.0.3]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.3
 [1.0.2]: https://github.com/fahomid/Efficient-Token/releases/tag/v1.0.2

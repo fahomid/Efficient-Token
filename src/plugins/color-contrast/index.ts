@@ -61,7 +61,7 @@ const NAMED: Readonly<Record<string, string>> = {
 export function colorContrastPlugin(): Plugin {
   return {
     name: "color-contrast",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     group: "design",
     tools: [

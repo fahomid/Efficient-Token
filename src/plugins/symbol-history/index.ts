@@ -14,7 +14,7 @@ export function symbolHistoryPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "symbol-history",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     init(c) {
       ctx = c;

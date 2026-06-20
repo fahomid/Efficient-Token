@@ -21,7 +21,7 @@ export function mediaInfoPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "media-info",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     group: "design",
     init(c) {

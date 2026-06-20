@@ -989,6 +989,23 @@ async function main(): Promise<void> {
     const stPlain = readStatus(stRoot);
     check("status: plain heartbeat is up without detail", stPlain.up === true && stPlain.version === undefined);
 
+    // per-PID heartbeats: multiple live servers aggregate (summed savings + count),
+    // and a stale one is excluded — the multi-instance case (duplicate registration,
+    // two windows) that the legacy single file cannot represent.
+    const mRoot = await mkTmp("efficient-token-multi-");
+    const mDir = path.join(mRoot, ".claude", ".efficient-token");
+    await fsp.mkdir(mDir, { recursive: true });
+    await fsp.writeFile(path.join(mDir, "111.json"), JSON.stringify({ v: "1.0.5", pid: 111, tier: "free", root: "/p", maxReadTokens: 6000, baselineTokens: 100, returnedTokens: 10, savedTokens: 90, calls: 2 }));
+    await fsp.writeFile(path.join(mDir, "222.json"), JSON.stringify({ v: "1.0.5", pid: 222, tier: "free", root: "/p", maxReadTokens: 6000, baselineTokens: 200, returnedTokens: 20, savedTokens: 180, calls: 3 }));
+    const mUp = readStatus(mRoot);
+    check("status: aggregates multiple live per-PID heartbeats", mUp.up === true && mUp.servers === 2 && mUp.calls === 5 && mUp.savedTokens === 270 && mUp.baselineTokens === 300 && mUp.returnedTokens === 30 && mUp.version === "1.0.5");
+    check("status: discloses multiple live servers", formatStatus(mUp).includes("2 servers") && formatDetailed(mUp).includes("live servers: 2"));
+    const mOld = Date.now() / 1000 - 600;
+    await fsp.writeFile(path.join(mDir, "333.json"), JSON.stringify({ pid: 333, baselineTokens: 9999, returnedTokens: 0, savedTokens: 9999, calls: 99 }));
+    await fsp.utimes(path.join(mDir, "333.json"), mOld, mOld);
+    const mUp2 = readStatus(mRoot);
+    check("status: a stale per-PID heartbeat is excluded from the aggregate", mUp2.servers === 2 && mUp2.calls === 5 && mUp2.savedTokens === 270);
+
     // --- heartbeat flush-on-record (status reflects fresh savings) ------
     const led = new SavingsLedger();
     let ledFired = 0;

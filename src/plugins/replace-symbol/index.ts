@@ -16,7 +16,7 @@ export function replaceSymbolPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "replace-symbol",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     init(c) {
       ctx = c;

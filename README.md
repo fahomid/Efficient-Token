@@ -175,7 +175,7 @@ after registering. To confirm it's connected:
 
 ```text
 efficient-token: ok
-version: 1.0.4
+version: 1.0.5
 tier: free
 root: /abs/path/to/your/project
 maxReadTokens: 6000
@@ -286,7 +286,7 @@ with **no model turn / no API call**, refreshed automatically. Want *only* the
 status line (no enforcement)? Run `efficient-token setup --no-hook`. It never
 replaces a status line you set yourself.
 
-The widget renders e.g. `efficient-token v1.0.4 (free): up · 3.1k token read and
+The widget renders e.g. `efficient-token v1.0.5 (free): up · 3.1k token read and
 passed 210 token to Claude (~93% less)`, or `efficient-token: not running` when the
 server is down.
 
@@ -305,7 +305,7 @@ heartbeat, no API call:
 
 ```text
 efficient-token: up
-version: 1.0.4
+version: 1.0.5
 tier: free
 root: /abs/project
 maxReadTokens: 6000

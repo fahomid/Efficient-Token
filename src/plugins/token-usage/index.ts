@@ -23,7 +23,7 @@ export function tokenUsagePlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "token-usage",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     group: "design",
     init(c) {

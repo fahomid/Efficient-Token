@@ -18,7 +18,7 @@ export function findReferencesPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "find-references",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     init(c) {
       ctx = c;

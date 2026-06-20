@@ -18,7 +18,7 @@ export function svgDigestPlugin(): Plugin {
   let ctx: CoreContext;
   return {
     name: "svg-digest",
-    version: "1.0.4",
+    version: "1.0.5",
     tier: "free",
     group: "design",
     init(c) {

@@ -86,20 +86,26 @@ Publishing to npm is automated: pushing a `v*` tag triggers the
 `package.json`, builds, runs the tests, publishes to npm with provenance, and creates
 the GitHub Release. To cut a release:
 
-1. **Bump the version.** Update `version` in `package.json`. The same string also
-   lives in `src/version.ts` (the `VERSION` constant — the single source for the
-   server, `health`, and `status` output) and in each plugin's `version` field; keep
-   them in sync. A find-and-replace of the old version across `src` and `package.json`
-   handles them all:
+1. **Bump the version.** First bump `package.json` + `package-lock.json` together with
+   npm (this is safe — it won't touch dependency versions):
 
    ```bash
-   # Linux (GNU sed): bump 1.0.4 -> 1.0.5
-   grep -rl '1\.0\.4' src package.json | xargs sed -i 's/1\.0\.4/1.0.5/g'
+   npm version 1.0.6 --no-git-tag-version
+   ```
+
+   The same version string also lives in `src/version.ts` (the `VERSION` constant —
+   the single source for the server, `health`, and `status` output) and in each
+   plugin's `version` field. Find-and-replace the old version across `src` to bring
+   those in sync (`src` contains the old version only in those fields):
+
+   ```bash
+   # Linux (GNU sed): bump 1.0.5 -> 1.0.6 across src
+   grep -rl '1\.0\.5' src | xargs sed -i 's/1\.0\.5/1.0.6/g'
    ```
    ```powershell
    # Windows PowerShell
-   $old = '1.0.4'; $new = '1.0.5'
-   @(Get-ChildItem -Recurse src -Filter *.ts) + (Get-Item package.json) |
+   $old = '1.0.5'; $new = '1.0.6'
+   Get-ChildItem -Recurse src -Filter *.ts |
      ForEach-Object { (Get-Content $_.FullName -Raw).Replace($old, $new) |
        Set-Content -NoNewline $_.FullName }
    ```
