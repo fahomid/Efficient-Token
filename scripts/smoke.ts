@@ -1001,7 +1001,7 @@ async function main(): Promise<void> {
     const hbLedger = new SavingsLedger();
     const hb = startHeartbeat(hbRoot, ctx.log, () => ({ v: "x", savedTokens: hbLedger.report().savedTokens }));
     hbLedger.onRecord(hb.flush);
-    const hbFile = path.join(hbRoot, ".claude", ".efficient-token.alive");
+    const hbFile = path.join(hbRoot, ".claude", ".efficient-token", `${process.pid}.json`); // per-PID
     const hbBefore = JSON.parse(await fsp.readFile(hbFile, "utf8")); // startup touch: savedTokens 0
     hbLedger.record("read", 4000, 200); // saves ~950 tok; fires the coalesced flush
     await new Promise((r) => setTimeout(r, 1200)); // let the coalesced write land
@@ -1010,6 +1010,21 @@ async function main(): Promise<void> {
     hb.stop();
     const hbGone = !(await fsp.stat(hbFile).then(() => true).catch(() => false));
     check("heartbeat stop() removes the file", hbGone);
+
+    // Per-PID isolation: two server instances on one project never clobber; the
+    // reader aggregates the live ones (sum savings, count servers).
+    const aggRoot = await mkTmp("efficient-token-agg-");
+    const aggDir = path.join(aggRoot, ".claude", ".efficient-token");
+    await fsp.mkdir(aggDir, { recursive: true });
+    await fsp.writeFile(path.join(aggDir, "111.json"), JSON.stringify({ v: "1.0.5", tier: "free", root: "/p", calls: 2, baselineTokens: 1000, returnedTokens: 100, savedTokens: 900 }));
+    await fsp.writeFile(path.join(aggDir, "222.json"), JSON.stringify({ v: "1.0.5", tier: "free", root: "/p", calls: 3, baselineTokens: 2000, returnedTokens: 200, savedTokens: 1800 }));
+    const aggStatus = readStatus(aggRoot);
+    check("readStatus aggregates multiple live servers (sum, no clobber)", aggStatus.up === true && aggStatus.servers === 2 && aggStatus.savedTokens === 2700 && aggStatus.baselineTokens === 3000 && aggStatus.calls === 5);
+    check("status compact notes multiple servers", formatStatus(aggStatus).includes("2 servers"));
+    const staleAgg = Date.now() / 1000 - 600;
+    await fsp.utimes(path.join(aggDir, "222.json"), staleAgg, staleAgg);
+    const aggStatus2 = readStatus(aggRoot);
+    check("readStatus ignores a stale per-PID file", aggStatus2.servers === 1 && aggStatus2.savedTokens === 900);
 
     // --- json_query plugin ----------------------------------------------
     await ctx.fs.writeAtomic("jq/data.json", JSON.stringify({ name: "pkg", scripts: { build: "tsc", test: "vitest" }, deps: ["a", "b", "c"], nested: { deep: { value: 42 } } }, null, 2));

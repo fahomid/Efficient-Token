@@ -11,6 +11,17 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (coalesced to at most once per second), so `efficient-token status` and the status
   line reflect current savings between the 30s liveness ticks instead of lagging by
   up to 30s. The liveness timer is unchanged.
+- **Per-session heartbeat isolation.** The heartbeat is now written per server process
+  (`<project>/.claude/.efficient-token/<pid>.json`) instead of one shared file, so
+  multiple servers on a single project — a duplicate registration, two windows, or an
+  orphaned process from a closed terminal — can no longer clobber each other's status
+  (which previously flickered the status line to `0`). The status line,
+  `efficient-token status`, and the redirect hook aggregate the live files (summing
+  savings, reporting the live-server count) and still honor the legacy single file for
+  compatibility; `uninstall` removes the whole heartbeat directory. Each server prunes
+  long-dead sibling files on startup and removes its own on exit. (Claude Code exposes
+  no session id to MCP servers, so isolation is per-project — the status sums across
+  live sessions of one project.)
 
 ## [1.0.4] - 2026-06-19
 

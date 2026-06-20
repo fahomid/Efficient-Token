@@ -130,15 +130,19 @@ async function main(): Promise<void> {
     check("health round-trips", resultText(health).includes("efficient-token: ok"));
     check("health reports the server version", /version: \d+\.\d+\.\d+/.test(resultText(health)));
 
-    // the running server publishes a detailed status heartbeat (read without an API call)
+    // the running server publishes a detailed per-PID status heartbeat (read without an API call)
     let beatOk = false;
     try {
-      const b = JSON.parse(await fsp.readFile(path.join(root, ".claude", ".efficient-token.alive"), "utf8")) as Record<string, unknown>;
-      beatOk = typeof b.v === "string" && b.tier === "free" && typeof b.root === "string" && typeof b.maxReadTokens === "number";
+      const hbDir = path.join(root, ".claude", ".efficient-token");
+      const files = (await fsp.readdir(hbDir)).filter((f) => f.endsWith(".json"));
+      for (const f of files) {
+        const b = JSON.parse(await fsp.readFile(path.join(hbDir, f), "utf8")) as Record<string, unknown>;
+        if (typeof b.v === "string" && b.tier === "free" && typeof b.root === "string" && typeof b.maxReadTokens === "number") beatOk = true;
+      }
     } catch {
       /* heartbeat not written */
     }
-    check("server publishes a detailed status heartbeat", beatOk);
+    check("server publishes a detailed per-PID status heartbeat", beatOk);
 
     const outline = await client.callTool({
       name: "code_outline",
